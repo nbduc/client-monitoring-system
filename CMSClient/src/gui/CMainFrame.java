@@ -5,6 +5,7 @@
  */
 package gui;
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.EventQueue;
 import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
@@ -16,7 +17,21 @@ import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.beans.PropertyChangeSupport;
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.FileSystems;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.Path;
+import java.nio.file.WatchService;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.StandardWatchEventKinds;
+import java.util.ArrayList;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.swing.*;
+import javax.swing.table.AbstractTableModel;
+import model.LogRecord;
 
 /**
  *
@@ -40,6 +55,8 @@ public final class CMainFrame extends JFrame{
     private JTextField directoryPathTextField;
     private DirectoryChooserButton directoryChooserButton;
     private JPanel logPanel;
+    
+    private WatchService watcher;
     
     private final PropertyChangeSupport propertyChangeSupport = new PropertyChangeSupport(this);
     //ip
@@ -95,6 +112,7 @@ public final class CMainFrame extends JFrame{
         propertyChangeSupport.removePropertyChangeListener(propertyName, listener);
     }
     
+    //custom component
     private class DirectoryChooserButton extends JButton{
         private JFileChooser directoryChooser;
         private File currentDirectory;
@@ -134,6 +152,44 @@ public final class CMainFrame extends JFrame{
         }
 
     }
+    private class LogRecordTableModel extends AbstractTableModel{
+        public ArrayList<LogRecord> logRecordList;
+        public LogRecordTableModel(ArrayList<LogRecord> logRecordList){
+            this.logRecordList = logRecordList;
+        }
+        private final String[] columnNames = {
+            "Time",
+            "Action",
+            "Desciption"
+        };
+
+        @Override
+        public int getRowCount() {
+            return logRecordList.size();
+        }
+
+        @Override
+        public int getColumnCount() {
+            return columnNames.length;
+        }
+
+        @Override
+        public Object getValueAt(int rowIndex, int columnIndex) {
+            if(logRecordList.isEmpty()){
+                return null;
+            } 
+            LogRecord record = logRecordList.get(rowIndex);
+            switch(columnIndex){
+                case 0: return record.getTime();
+                case 1: return record.getAction();
+                case 2: return record.getDescription();
+                default: return null;
+            }
+        }
+        
+    }
+    
+    //listeners
     private class ConnectionStatusChangeListener implements PropertyChangeListener{
         @Override
         public void propertyChange(PropertyChangeEvent evt) {
@@ -155,6 +211,7 @@ public final class CMainFrame extends JFrame{
         }
     }
     
+    //frame singleton
     private static CMainFrame instance;
     public static CMainFrame getInstance(){
        if(instance == null){
@@ -163,8 +220,10 @@ public final class CMainFrame extends JFrame{
        return instance;
     }
     
+    //frame constructor
     public CMainFrame(){
         initPropertyValues();
+        initWatchService();
         createAndShowGUI();
     }
     
@@ -185,7 +244,22 @@ public final class CMainFrame extends JFrame{
             System.out.println(result);
         }
     }
-    
+    private void initWatchService(){
+        try {
+            this.watcher = FileSystems.getDefault().newWatchService();
+            Files.walkFileTree(currentDirectory.toPath(), new SimpleFileVisitor<Path>(){
+                @Override
+                public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attrs) throws IOException {
+                    directory.register(watcher, 
+                            StandardWatchEventKinds.ENTRY_CREATE,
+                            StandardWatchEventKinds.ENTRY_DELETE);
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException ex) {
+            Logger.getLogger(CMainFrame.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
     private void createAndShowGUI(){
         this.addPropertyChangeListener("currentDirectory", new DirectoryChangeListener());
         this.addPropertyChangeListener("isConnected", new ConnectionStatusChangeListener());
@@ -264,8 +338,8 @@ public final class CMainFrame extends JFrame{
         getContentPane().setLayout(new BorderLayout());
         getContentPane().add(connectAndWatchDirectoryWrapper, BorderLayout.NORTH);
         getContentPane().add(logPanel, BorderLayout.CENTER);
-        setTitle("Client Monitoring System");
-        setSize(750, 400);
+        setTitle("Client Monitoring System (Client)");
+        setSize(750, 600);
         setLocationRelativeTo(null);
         addWindowListener(new WindowAdapter() {
             @Override
@@ -282,12 +356,13 @@ public final class CMainFrame extends JFrame{
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
     }
     
+    //update methods
     private void updateConnectionStatusOnUI(){
         startButton.setEnabled(!isConnected);
         stopButton.setEnabled(isConnected);
+        connectionStatusLabel.setForeground(isConnected? Color.BLUE : Color.RED);
         connectionStatusLabel.setText(isConnected? "Connected" : "Not Connected");
     }
-    
     private void updateCurrentDirectoryOnUI(){
         if(currentDirectory != null){
             directoryPathTextField.setText(currentDirectory.toPath().toString());
@@ -299,7 +374,6 @@ public final class CMainFrame extends JFrame{
     public static void main(String[] args) {
         EventQueue.invokeLater(() -> {
             try {
-                // Set cross-platform Java L&F (also called "Metal")
                 UIManager.setLookAndFeel(
                     UIManager.getSystemLookAndFeelClassName());
             } catch (UnsupportedLookAndFeelException | ClassNotFoundException | InstantiationException | IllegalAccessException e) {
