@@ -6,7 +6,6 @@
 package gui;
 import java.awt.BorderLayout;
 import java.awt.Color;
-import java.awt.EventQueue;
 import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -24,14 +23,23 @@ import java.nio.file.Files;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.Path;
 import java.nio.file.WatchService;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchEvent;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.StandardWatchEventKinds;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
+import model.CreateLogRecord;
+import model.DeleteLogRecord;
 import model.LogRecord;
+import model.RenameLogRecord;
+import model.UpdateLogRecord;
 
 /**
  *
@@ -56,7 +64,8 @@ public final class CMainFrame extends JFrame{
     private DirectoryChooserButton directoryChooserButton;
     private JPanel logPanel;
     
-    private WatchService watcher;
+    private WatchService watchService;
+    private Map<WatchKey, Path> watchKeys;
     
     private final PropertyChangeSupport propertyChangeSupport = new PropertyChangeSupport(this);
     //ip
@@ -244,18 +253,101 @@ public final class CMainFrame extends JFrame{
             System.out.println(result);
         }
     }
+    private void walkAndRegisterDirectories(final Path start) throws IOException {
+        Files.walkFileTree(start, new SimpleFileVisitor<Path>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attrs) throws IOException {
+                WatchKey key = directory.register(watchService, 
+                        StandardWatchEventKinds.ENTRY_CREATE,
+                        StandardWatchEventKinds.ENTRY_DELETE,
+                        StandardWatchEventKinds.ENTRY_MODIFY);
+                watchKeys.put(key, directory);
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
     private void initWatchService(){
+        //References: https://howtodoinjava.com/java8/java-8-watchservice-api-tutorial/
         try {
-            this.watcher = FileSystems.getDefault().newWatchService();
-            Files.walkFileTree(currentDirectory.toPath(), new SimpleFileVisitor<Path>(){
-                @Override
-                public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attrs) throws IOException {
-                    directory.register(watcher, 
-                            StandardWatchEventKinds.ENTRY_CREATE,
-                            StandardWatchEventKinds.ENTRY_DELETE);
-                    return FileVisitResult.CONTINUE;
+            this.watchService = FileSystems.getDefault().newWatchService();
+            watchKeys = new HashMap<>();
+            walkAndRegisterDirectories(currentDirectory.toPath());
+            Thread t = new Thread(() -> {
+                for(;;){
+                    WatchKey key;
+                    try {
+                        key = watchService.take();
+                        Path dir = watchKeys.get(key);
+                        if (dir == null) {
+                            System.err.println("WatchKey not recognized!!");
+                            continue;
+                        }
+                        
+                        List<WatchEvent<?>> eventList = key.pollEvents();
+                    
+                        boolean valid = key.reset();
+                        if (!valid) {
+                            watchKeys.remove(key);
+                            if (watchKeys.isEmpty()) {
+                                break;
+                            }
+                        }
+                        
+                        if(eventList.size() == 1){
+                            WatchEvent<?> event = eventList.get(0);
+                            WatchEvent.Kind kind = event.kind();
+                            
+                            LogRecord newLogRecord = null;
+                            Path path = dir.resolve(((WatchEvent<Path>) event).context());
+                            if(kind == StandardWatchEventKinds.ENTRY_CREATE){
+                                newLogRecord = new CreateLogRecord(path);
+                            } else if (kind == StandardWatchEventKinds.ENTRY_DELETE){
+                                newLogRecord = new DeleteLogRecord(path);
+                            } else if (kind == StandardWatchEventKinds.ENTRY_MODIFY){
+                                newLogRecord = new UpdateLogRecord(path);
+                            }
+                            
+                            if(newLogRecord != null){
+                                System.out.println(newLogRecord.toString());
+                            }
+                            
+                        }
+                        
+                        if(eventList.size() == 2){
+                            WatchEvent<?> event1 = eventList.get(0);
+                            WatchEvent<?> event2 = eventList.get(1);
+                            if(event1.kind() == StandardWatchEventKinds.ENTRY_DELETE 
+                                    && event2.kind() == StandardWatchEventKinds.ENTRY_CREATE){
+                                Path oldPath = dir.resolve(((WatchEvent<Path>) event1).context());
+                                Path newPath = dir.resolve(((WatchEvent<Path>) event2).context());
+                                LogRecord newLogRecord = new RenameLogRecord(oldPath, newPath);
+                                System.out.println(newLogRecord.toString());
+                            }
+                            
+                        }
+
+                        eventList.forEach((event) -> {
+                            WatchEvent.Kind kind = event.kind();
+                            
+                            Path name = ((WatchEvent<Path>) event).context();
+                            Path child = dir.resolve(name);
+                            System.out.format("%s: %s\n", kind.name(), child);
+                            if (kind == StandardWatchEventKinds.ENTRY_CREATE) {
+                                try {
+                                    if (Files.isDirectory(child)) {
+                                        walkAndRegisterDirectories(child);
+                                    }
+                                } catch (IOException ex) {
+                                    // do something useful
+                                }
+                            }
+                        });
+                    } catch (InterruptedException ex) {
+                        Logger.getLogger(CMainFrame.class.getName()).log(Level.SEVERE, null, ex);
+                    }
                 }
             });
+            t.start();
         } catch (IOException ex) {
             Logger.getLogger(CMainFrame.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -372,7 +464,7 @@ public final class CMainFrame extends JFrame{
     }
     
     public static void main(String[] args) {
-        EventQueue.invokeLater(() -> {
+        SwingUtilities.invokeLater(() -> {
             try {
                 UIManager.setLookAndFeel(
                     UIManager.getSystemLookAndFeelClassName());

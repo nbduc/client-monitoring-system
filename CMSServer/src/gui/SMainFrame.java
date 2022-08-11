@@ -27,6 +27,35 @@ public class SMainFrame extends JFrame{
     private JTextField searchClientTextField;
     private JButton searchClientButton;
     
+    //listeners
+    private class SearchClientDocumentListener implements DocumentListener{
+
+        @Override
+        public void insertUpdate(DocumentEvent e) {
+            action();
+        }
+
+        @Override
+        public void removeUpdate(DocumentEvent e) {
+            action();
+        }
+
+        @Override
+        public void changedUpdate(DocumentEvent e) {
+            action();
+        }
+        
+        public void action() {
+            if ("".equals(searchClientTextField.getText())){
+//                    createNewWordList(originWordList);
+            }
+        }
+        
+    }
+    
+    //custom components
+    
+    
     //frame constructor
     public SMainFrame(){
         createAndShowGUI();
@@ -39,23 +68,7 @@ public class SMainFrame extends JFrame{
 //        searchClientTextField.addActionListener((ActionEvent e) -> 
 //                searchAndDisplayResult(searchClientTextField.getText())
 //        );
-        searchClientTextField.getDocument().addDocumentListener(new DocumentListener(){
-            public void changedUpdate(DocumentEvent e) {
-                action();
-            }
-            public void removeUpdate(DocumentEvent e) {
-                action();
-            }
-            public void insertUpdate(DocumentEvent e) {
-                action();
-            }
-
-            public void action() {
-                if ("".equals(searchClientTextField.getText())){
-//                    createNewWordList(originWordList);
-                }
-            }
-        });
+        searchClientTextField.getDocument().addDocumentListener(new SearchClientDocumentListener());
         
         //set search button
         searchClientButton = new JButton("Search");

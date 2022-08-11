@@ -11,26 +11,26 @@ import java.time.LocalDateTime;
  *
  * @author duc
  */
-public class LogRecord {
-    private LocalDateTime time;
-    private Action action;
-    private String description;
+public abstract class LogRecord {
+    protected LocalDateTime time;
+    protected Action action;
+    protected String description;
     
-    public enum Action {
-        RENAME_CURRENT_DIR,
-        RENAME_SUB_DIR,
-        RENAME_FILE,
-        CREATE_SUB_DIR,
-        CREATE_FILE,
-        UPDATE_FILE,
-        DELETE_SUB_DIR,
-        DELETE_FILE,
+    public static enum Action {
+        RENAME,
+        CREATE,
+        UPDATE,
+        DELETE,
         LOG_IN,
         LOG_OUT;
     }
     
-    public LogRecord(Action action){
+    public LogRecord(){
         this.time = LocalDateTime.now();
+    }
+    
+    public LogRecord(Action action){
+        this();
         this.action = action;
     }
 
@@ -74,5 +74,9 @@ public class LogRecord {
      */
     public void setDescription(String description) {
         this.description = description;
+    }
+    
+    public String toString(){
+        return this.time + "| " + this.action + "| " + this.description;
     }
 }
