@@ -17,6 +17,9 @@ import java.beans.PropertyChangeListener;
 import java.beans.PropertyChangeSupport;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.Socket;
 import java.nio.file.FileSystems;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -66,6 +69,8 @@ public final class CMainFrame extends JFrame{
     
     private WatchService watchService;
     private Map<WatchKey, Path> watchKeys;
+    
+    private Socket socket;
     
     private final PropertyChangeSupport propertyChangeSupport = new PropertyChangeSupport(this);
     //ip
@@ -352,6 +357,37 @@ public final class CMainFrame extends JFrame{
             Logger.getLogger(CMainFrame.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
+    private void startConnection(){
+        try {
+            socket = new Socket(ip, port);
+            System.out.println("Connected: " + socket);
+            setIsConnected(true);
+            
+            InputStream is = socket.getInputStream();
+            OutputStream os = socket.getOutputStream();
+            for (int i = '0'; i <= '9'; i++) {
+                os.write(i); // Send each number to the server
+                int ch = is.read(); // Waiting for results from server
+                System.out.print((char) ch + " "); // Display the results received from the server
+            }
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(null, 
+                "Cannot connect to server!", "Error", 
+                JOptionPane.ERROR_MESSAGE);
+        }
+    }
+    private void stopConnection(){
+        try {
+            if (socket != null) {
+                socket.close();
+                setIsConnected(false);
+            }  
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(null, 
+                "Cannot close the socket!", "Error", 
+                JOptionPane.ERROR_MESSAGE);
+        }
+    }
     private void createAndShowGUI(){
         this.addPropertyChangeListener("currentDirectory", new DirectoryChangeListener());
         this.addPropertyChangeListener("isConnected", new ConnectionStatusChangeListener());
@@ -362,9 +398,9 @@ public final class CMainFrame extends JFrame{
         portTextField.setText(port.toString());
         connectionStatusLabel = new JLabel("Not connected");
         startButton = new JButton("Start");
-        startButton.addActionListener((ActionEvent evt) -> setIsConnected(true));
+        startButton.addActionListener((ActionEvent evt) -> startConnection());
         stopButton = new JButton("Stop");
-        stopButton.addActionListener((ActionEvent evt) -> setIsConnected(false));
+        stopButton.addActionListener((ActionEvent evt) -> stopConnection());
         updateConnectionStatusOnUI();
         
         JPanel wrapper1 = new JPanel();

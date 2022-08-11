@@ -14,6 +14,15 @@ import java.awt.event.ActionEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -24,8 +33,13 @@ import model.Client;
  * @author duc
  */
 public class SMainFrame extends JFrame{
+    public final int NUMBER_OF_THREAD = 4;
+    public final int PORT = 3210;
+    
     private JTextField searchClientTextField;
     private JButton searchClientButton;
+    
+    private ServerSocket serverSocket;
     
     //listeners
     private class SearchClientDocumentListener implements DocumentListener{
@@ -58,7 +72,66 @@ public class SMainFrame extends JFrame{
     
     //frame constructor
     public SMainFrame(){
+        initServerSocket();
         createAndShowGUI();
+    }
+    
+    private class RequestHandler implements Runnable{
+        private final Socket socket;
+        public RequestHandler(Socket socket){
+            this.socket = socket;
+        }
+
+        @Override
+        public void run() {
+            System.out.println("Processing: " + socket);
+            try {
+                OutputStream os = socket.getOutputStream();
+                InputStream is = socket.getInputStream();
+                while (true) {
+                    int ch = is.read(); // Receive data from client
+                    if (ch == -1) {
+                        break;
+                    }
+                    os.write(ch); // Send the results to client
+                }
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(null, 
+                    "Request Processing Error: " + ex, "Error", 
+                    JOptionPane.ERROR_MESSAGE);
+            }
+            System.out.println("Complete processing: " + socket);
+        }
+        
+    }
+    
+    private void initServerSocket(){
+        ExecutorService executor = Executors.newFixedThreadPool(NUMBER_OF_THREAD);
+        try {
+            serverSocket = new ServerSocket(PORT);
+            System.out.println("Server started: " + serverSocket);
+            Thread thread = new Thread(() -> {
+                while (true) {
+                    try {
+                        Socket socket = serverSocket.accept();
+                        System.out.println("Client accepted: " + socket);
+
+                        RequestHandler handler = new RequestHandler(socket);
+                        executor.execute(handler);
+                    } catch (IOException ex) {
+                        JOptionPane.showMessageDialog(null, 
+                            "Connection Error: " + ex, "Error", 
+                            JOptionPane.ERROR_MESSAGE);
+                    }
+                }
+            });
+            thread.start();
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(null, 
+                "Connection Error: " + ex, "Error", 
+                JOptionPane.ERROR_MESSAGE);
+            Logger.getLogger(SMainFrame.class.getName()).log(Level.SEVERE, null, ex);
+        }
     }
     
     //
