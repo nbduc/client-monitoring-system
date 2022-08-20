@@ -3,15 +3,14 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package model;
+package smessage;
 
 /**
  *
  * @author duc
  */
-public class LogOutLogRecord extends LogRecord{
-    public LogOutLogRecord(){
-        super(Action.LOG_OUT);
-        this.description = String.format("Log out");
+public class GreetingResponseMessage extends ServerMessage{
+    public GreetingResponseMessage(){
+        this.title = MessageType.GREETING_RESPONSE;
     }
 }

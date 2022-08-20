@@ -11,7 +11,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import model.LogRecord;
+import logrecord.LogRecord;
 
 /**
  *
@@ -54,6 +54,6 @@ public class LogRecordUtils {
     }
     
     public String convertLogRecordToCsv(LogRecord record){
-        return "";
+        return record.toString();
     }
 }

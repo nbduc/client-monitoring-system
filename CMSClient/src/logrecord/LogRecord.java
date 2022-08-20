@@ -3,16 +3,17 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package model;
+package logrecord;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+
 
 /**
  *
  * @author duc
  */
 public abstract class LogRecord {
-    protected LocalDateTime time;
+    protected long time;
     protected Action action;
     protected String description;
     
@@ -26,7 +27,7 @@ public abstract class LogRecord {
     }
     
     public LogRecord(){
-        this.time = LocalDateTime.now();
+        this.time = Instant.now().getEpochSecond();
     }
     
     public LogRecord(Action action){
@@ -37,14 +38,14 @@ public abstract class LogRecord {
     /**
      * @return the time
      */
-    public LocalDateTime getTime() {
+    public long getTime() {
         return time;
     }
 
     /**
      * @param time the time to set
      */
-    public void setTime(LocalDateTime time) {
+    public void setTime(long time) {
         this.time = time;
     }
 
@@ -77,6 +78,6 @@ public abstract class LogRecord {
     }
     
     public String toString(){
-        return this.time + "| " + this.action + "| " + this.description;
+        return this.time + "," + this.action + "," + this.description;
     }
 }

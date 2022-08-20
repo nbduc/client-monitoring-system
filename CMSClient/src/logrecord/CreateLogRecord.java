@@ -3,7 +3,7 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package model;
+package logrecord;
 import java.nio.file.Path;
 
 /**
@@ -13,7 +13,7 @@ import java.nio.file.Path;
 public class CreateLogRecord extends LogRecord{
     public CreateLogRecord(Path path){
         super(Action.CREATE);
-        this.description = String.format("%s: '%s'", 
+        this.description = String.format("%s: %s", 
                 action, 
                 path.toString());
     }

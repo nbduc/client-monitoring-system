@@ -5,6 +5,8 @@
  */
 package gui;
 
+import cmessage.ClientMessage;
+import com.google.gson.Gson;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.EventQueue;
@@ -14,11 +16,16 @@ import java.awt.event.ActionEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Level;
@@ -27,19 +34,21 @@ import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import model.Client;
+import smessage.ServerStatusNotification;
 
 /**
  *
  * @author duc
  */
 public class SMainFrame extends JFrame{
-    public final int NUMBER_OF_THREAD = 4;
+    public final int NUMBER_OF_THREAD = 10;
     public final int PORT = 3210;
     
     private JTextField searchClientTextField;
     private JButton searchClientButton;
     
     private ServerSocket serverSocket;
+    private Gson gson = new Gson();
     
     //listeners
     private class SearchClientDocumentListener implements DocumentListener{
@@ -85,17 +94,22 @@ public class SMainFrame extends JFrame{
         @Override
         public void run() {
             System.out.println("Processing: " + socket);
-            try {
-                OutputStream os = socket.getOutputStream();
-                InputStream is = socket.getInputStream();
-                while (true) {
-                    int ch = is.read(); // Receive data from client
-                    if (ch == -1) {
-                        break;
-                    }
-                    os.write(ch); // Send the results to client
+            try (BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(
+                    socket.getOutputStream(), StandardCharsets.UTF_8));
+                    BufferedReader br = new BufferedReader(new InputStreamReader(
+                    socket.getInputStream(), StandardCharsets.UTF_8));) {
+                // Receive data from client
+                String messageJson = br.readLine();
+                ClientMessage message = gson.fromJson(messageJson, ClientMessage.class);
+                
+                if(message.getTitle() == ClientMessage.MessageType.GREETING){
+                    ServerStatusNotification response = new ServerStatusNotification(true);
+                    bw.write(response.toJsonString());
+                    bw.newLine();
+                    bw.flush();
                 }
             } catch (IOException ex) {
+                // chỗ naày cần ghi log chứ không hiện form thông báo
                 JOptionPane.showMessageDialog(null, 
                     "Request Processing Error: " + ex, "Error", 
                     JOptionPane.ERROR_MESSAGE);
@@ -224,8 +238,8 @@ public class SMainFrame extends JFrame{
             try {
                 UIManager.setLookAndFeel(
                     UIManager.getSystemLookAndFeelClassName());
-            } catch (UnsupportedLookAndFeelException | ClassNotFoundException | InstantiationException | IllegalAccessException e) {
-                // handle exception
+            } catch (UnsupportedLookAndFeelException | ClassNotFoundException | InstantiationException | IllegalAccessException ex) {
+                ex.printStackTrace();
             }
             SMainFrame window = SMainFrame.getInstance();
             window.setVisible(true);

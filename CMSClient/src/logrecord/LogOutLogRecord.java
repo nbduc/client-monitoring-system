@@ -3,15 +3,15 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package model;
+package logrecord;
 
 /**
  *
  * @author duc
  */
-public class LogInLogRecord extends LogRecord{
-    public LogInLogRecord(){
-        super(Action.LOG_IN);
-        this.description = String.format("Log in");
+public class LogOutLogRecord extends LogRecord{
+    public LogOutLogRecord(){
+        super(Action.LOG_OUT);
+        this.description = String.format("Log out");
     }
 }

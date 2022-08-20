@@ -3,7 +3,7 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package model;
+package logrecord;
 
 import java.nio.file.Path;
 
@@ -14,7 +14,7 @@ import java.nio.file.Path;
 public class RenameLogRecord extends LogRecord{
     public RenameLogRecord(Path oldPath, Path newPath){
         super(Action.RENAME);
-        this.description = String.format("%s: '%s' -> '%s'", 
+        this.description = String.format("%s: %s -> %s", 
                 action, 
                 oldPath.toString(), 
                 newPath.toString());
