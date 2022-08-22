@@ -16,7 +16,7 @@ import cmessage.GreetingMessage;
 import logrecord.LogRecord;
 import cmessage.SendingLogRecordMessage;
 import com.google.gson.Gson;
-import smessage.GreetingResponseMessage;
+import smessage.ServerStatusNotification;
 import smessage.SendingLogRecordReponseMessage;
 
 /**
@@ -38,7 +38,7 @@ public class ServerComunicator {
             //receiving message
             String responseJson = br.readLine();
             SendingLogRecordReponseMessage response = gson.fromJson(responseJson, SendingLogRecordReponseMessage.class);
-            return response.getStatus();
+            return true;
             
         } catch (IOException ex){
             ex.printStackTrace();
@@ -59,7 +59,7 @@ public class ServerComunicator {
             
             //receiving message
             String responseJson = br.readLine();
-            GreetingResponseMessage response = gson.fromJson(responseJson, GreetingResponseMessage.class);
+            ServerStatusNotification response = gson.fromJson(responseJson, ServerStatusNotification.class);
             return response.getStatus();
             
         } catch (IOException ex){

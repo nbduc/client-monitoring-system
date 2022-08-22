@@ -10,22 +10,27 @@ import com.google.gson.Gson;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.EventQueue;
+import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
-import java.awt.event.ActionEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.net.Inet6Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
+import java.util.Enumeration;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Level;
@@ -41,14 +46,17 @@ import smessage.ServerStatusNotification;
  * @author duc
  */
 public class SMainFrame extends JFrame{
-    public final int NUMBER_OF_THREAD = 10;
-    public final int PORT = 3210;
+    public final Integer NUMBER_OF_THREAD = 10;
+    public final Integer PORT = 3210;
     
     private JTextField searchClientTextField;
     private JButton searchClientButton;
+    private JTextField portTextField;
     
     private ServerSocket serverSocket;
     private Gson gson = new Gson();
+    private Map<String, String> ipList;
+    private Map<String, Client> clientList;
     
     //listeners
     private class SearchClientDocumentListener implements DocumentListener{
@@ -81,8 +89,32 @@ public class SMainFrame extends JFrame{
     
     //frame constructor
     public SMainFrame(){
+        this.ipList = getServerIp();
         initServerSocket();
         createAndShowGUI();
+    }
+    
+    private Map<String, String> getServerIp(){
+        TreeMap<String, String> ipTreeMap = new TreeMap<>();
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface iface = interfaces.nextElement();
+                // filters inactive interfaces
+                if (!iface.isUp())
+                    continue;
+
+                Enumeration<InetAddress> addresses = iface.getInetAddresses();
+                while(addresses.hasMoreElements()) {
+                    InetAddress addr = addresses.nextElement();
+                    if (addr instanceof Inet6Address) continue;
+                    ipTreeMap.put(iface.getDisplayName(), addr.getHostAddress());
+                }
+            }
+            return ipTreeMap;
+        } catch (SocketException e) {
+            throw new RuntimeException(e);
+        }
     }
     
     private class RequestHandler implements Runnable{
@@ -150,7 +182,16 @@ public class SMainFrame extends JFrame{
     
     //
     private void createAndShowGUI(){
-         //set search text field
+        //set client display mode
+        JRadioButton connectedClientRadButton = new JRadioButton("Connected Clients");
+        connectedClientRadButton.setSelected(true);
+        JRadioButton allClientRadButton = new JRadioButton("All Clients");
+        
+        ButtonGroup clientDisplayButtonGroup = new ButtonGroup();
+        clientDisplayButtonGroup.add(connectedClientRadButton);
+        clientDisplayButtonGroup.add(allClientRadButton);
+        
+        //set search text field
         searchClientTextField = new JTextField();
 //        searchClientTextField.addActionListener((ActionEvent e) -> 
 //                searchAndDisplayResult(searchClientTextField.getText())
@@ -167,13 +208,20 @@ public class SMainFrame extends JFrame{
         searchClientPane.setLayout(new GridBagLayout());
         GridBagConstraints c;
         c = new GridBagConstraints();
+        c.anchor = GridBagConstraints.WEST;
         c.gridy = 0;
+        c.gridx = 0;
+        searchClientPane.add(connectedClientRadButton, c);
+        c.gridy = 1;
+        searchClientPane.add(allClientRadButton, c);
+        c = new GridBagConstraints();
+        c.gridy = 2;
         c.gridx = 0;
         c.weightx = 1.0; //take all extra space
         c.fill = GridBagConstraints.BOTH; //fill all the space
         searchClientPane.add(searchClientTextField, c);
         c = new GridBagConstraints();
-        c.gridy = 0;
+        c.gridy = 2;
         c.gridx = 1;
         c.gridwidth = 1;
         searchClientPane.add(searchClientButton, c);
@@ -194,13 +242,55 @@ public class SMainFrame extends JFrame{
         //set client list pane
         JScrollPane clientPane = new JScrollPane(clientJList);
 
+        //set left pane
         JPanel leftPane = new JPanel();
         leftPane.setPreferredSize(new Dimension(250, -1));
         leftPane.setLayout(new BorderLayout());
         leftPane.add(searchClientPane, BorderLayout.NORTH);
         leftPane.add(clientPane, BorderLayout.CENTER);
         
+        //set server infor pane
+        JPanel serverInfoPanel = new JPanel();
+        serverInfoPanel.setBorder(BorderFactory.createTitledBorder("Connection information"));
+        serverInfoPanel.setLayout(new BoxLayout(serverInfoPanel, BoxLayout.Y_AXIS));
+        
+        portTextField = new JTextField(5);
+        portTextField.setEditable(false);
+        portTextField.setText(PORT.toString());
+        JPanel portPanel = new JPanel();
+        portPanel.setLayout(new FlowLayout(FlowLayout.LEADING));
+        portPanel.add(new JLabel("Port:"));
+        portPanel.add(portTextField);
+        serverInfoPanel.add(portPanel);
+        ipList.forEach((name, address) -> {
+            JPanel inetPanel = new JPanel();
+            inetPanel.setLayout(new FlowLayout(FlowLayout.LEADING));
+            JTextField addressTextField = new JTextField(25);
+            addressTextField.setEditable(false);
+            addressTextField.setText(address);
+            inetPanel.add(addressTextField);
+            inetPanel.add(new JLabel("("+name+")"));
+            serverInfoPanel.add(inetPanel);
+        });
+        
+        //client information pane
+        JPanel clientInfoPanel = new JPanel();
+        clientInfoPanel.setLayout(new BoxLayout(clientInfoPanel, BoxLayout.Y_AXIS));
+        clientInfoPanel.add(new JLabel("Client information:"));
+        
+        //client log pane
+        JPanel clientLogPanel = new JPanel();
+        
+        // set tabbed pane
+        JTabbedPane tabbedPane = new JTabbedPane();
+        tabbedPane.add("Client information", clientInfoPanel);
+        tabbedPane.add("Change logs", clientLogPanel);
+        
+        //set right pane
         JPanel rightPane = new JPanel();
+        rightPane.setLayout(new BorderLayout());
+        rightPane.add(serverInfoPanel, BorderLayout.NORTH);
+        rightPane.add(tabbedPane, BorderLayout.CENTER);
         
         JSplitPane mainPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPane, rightPane);
 

@@ -13,7 +13,6 @@ import com.google.gson.Gson;
  */
 public class ServerMessage {
     protected MessageType title;
-    protected Boolean status;
     
     public enum MessageType{
         GREETING_RESPONSE,
@@ -23,14 +22,6 @@ public class ServerMessage {
     public MessageType getTitle(){
         return this.title;
     };
-    
-    public Boolean getStatus() {
-        return status;
-    }
-    
-    public void setStatus(Boolean status){
-        this.status = status;
-    }
     
     public String toJsonString(){
         Gson gson = new Gson();

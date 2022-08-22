@@ -18,6 +18,8 @@ import java.beans.PropertyChangeSupport;
 import java.io.File;
 import java.io.IOException;
 import java.net.Socket;
+import java.net.SocketException;
+import java.net.UnknownHostException;
 import java.nio.file.FileSystems;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -36,7 +38,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
 import javax.swing.table.AbstractTableModel;
+import javax.swing.event.DocumentListener;
 import logrecord.CreateLogRecord;
 import logrecord.DeleteLogRecord;
 import logrecord.LogRecord;
@@ -54,7 +58,6 @@ public final class CMainFrame extends JFrame{
     private final Integer DEFAULT_PORT = 3210;
     private final String DEFAULT_DIRECTORY = "C:/ClientMonitoringSystem/Data";
     
-    private JPanel connectPanel;
     private JTextField ipTextField;
     private JTextField portTextField;
     private JLabel connectionStatusLabel;
@@ -222,6 +225,47 @@ public final class CMainFrame extends JFrame{
             }
         }
     }
+    private class ipTextFieldChangeListener implements DocumentListener{
+
+        @Override
+        public void insertUpdate(DocumentEvent e) {
+            action();
+        }
+
+        @Override
+        public void removeUpdate(DocumentEvent e) {
+            action();
+        }
+
+        @Override
+        public void changedUpdate(DocumentEvent e) {
+            action();
+        }
+        
+        public void action() {
+            setIp(ipTextField.getText());
+        }
+    }
+    private class portTextFieldChangeListener implements DocumentListener{
+        @Override
+        public void insertUpdate(DocumentEvent e) {
+            action();
+        }
+
+        @Override
+        public void removeUpdate(DocumentEvent e) {
+            action();
+        }
+
+        @Override
+        public void changedUpdate(DocumentEvent e) {
+            action();
+        }
+        
+        public void action() {
+            setPort(Integer.parseInt(portTextField.getText()));
+        }
+    }
     
     //frame singleton
     private static CMainFrame instance;
@@ -256,7 +300,7 @@ public final class CMainFrame extends JFrame{
             System.out.println(result);
         }
     }
-    private void walkAndRegisterDirectories(final Path start) throws IOException {
+    private void walkAndRegisterDirectories(final Path start, Map<WatchKey, Path> watchKeys) throws IOException {
         Files.walkFileTree(start, new SimpleFileVisitor<Path>() {
             @Override
             public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attrs) throws IOException {
@@ -269,96 +313,101 @@ public final class CMainFrame extends JFrame{
             }
         });
     }
+    private class WatchServiceRunnable implements Runnable{
+        private Thread thread;
+        private Map<WatchKey, Path> watchKeys;
+        public WatchServiceRunnable(Map<WatchKey, Path> watchKeys){
+            this.watchKeys = watchKeys;
+        }
+        
+        @Override
+        public void run() {
+            for(;;){
+                WatchKey key;
+                try {
+                    key = watchService.take();
+                    Path dir = watchKeys.get(key);
+                    if (dir == null) {
+                        System.err.println("WatchKey not recognized!!");
+                        continue;
+                    }
+
+                    List<WatchEvent<?>> eventList = key.pollEvents();
+
+                    boolean valid = key.reset();
+                    if (!valid) {
+                        watchKeys.remove(key);
+                        if (watchKeys.isEmpty()) {
+                            break;
+                        }
+                    }
+                    
+                    LogRecord newLogRecord = null;
+                    //
+                    if(eventList.size() == 1){
+                        WatchEvent<?> event = eventList.get(0);
+                        WatchEvent.Kind kind = event.kind();
+
+                        Path path = dir.resolve(((WatchEvent<Path>) event).context());
+                        if(kind == StandardWatchEventKinds.ENTRY_CREATE){
+                            newLogRecord = new CreateLogRecord(path);
+                            try {
+                                if (Files.isDirectory(path)) {
+                                    walkAndRegisterDirectories(path, watchKeys);
+                                }
+                            } catch (IOException ex) {
+                                ex.printStackTrace();
+                            }
+                        } else if (kind == StandardWatchEventKinds.ENTRY_DELETE){
+                            newLogRecord = new DeleteLogRecord(path);
+                        } else if (kind == StandardWatchEventKinds.ENTRY_MODIFY){
+                            newLogRecord = new UpdateLogRecord(path);
+                        }
+                    }
+                    
+                    //rename
+                    if(eventList.size() == 2){
+                        WatchEvent<?> event1 = eventList.get(0);
+                        WatchEvent<?> event2 = eventList.get(1);
+                        if(event1.kind() == StandardWatchEventKinds.ENTRY_DELETE 
+                                && event2.kind() == StandardWatchEventKinds.ENTRY_CREATE){
+                            Path oldPath = dir.resolve(((WatchEvent<Path>) event1).context());
+                            Path newPath = dir.resolve(((WatchEvent<Path>) event2).context());
+                            newLogRecord = new RenameLogRecord(oldPath, newPath);
+                        }
+                    }
+
+                    if(newLogRecord != null){
+                        sendLogRecord(newLogRecord);
+                    }
+
+                } catch (InterruptedException ex) {
+                    ex.printStackTrace();
+                }
+            }
+        }
+        
+        public void start(){
+            if (thread == null){
+                thread = new Thread(this);
+                thread.start();
+            }
+        }
+        
+        public void stop(){
+            if(thread != null){
+                thread = null;
+            }
+        }
+    }
     private void initWatchService(){
         //References: https://howtodoinjava.com/java8/java-8-watchservice-api-tutorial/
         try {
             this.watchService = FileSystems.getDefault().newWatchService();
             watchKeys = new HashMap<>();
-            walkAndRegisterDirectories(currentDirectory.toPath());
-            Thread t = new Thread(() -> {
-                for(;;){
-                    WatchKey key;
-                    try {
-                        key = watchService.take();
-                        Path dir = watchKeys.get(key);
-                        if (dir == null) {
-                            System.err.println("WatchKey not recognized!!");
-                            continue;
-                        }
-                        
-                        List<WatchEvent<?>> eventList = key.pollEvents();
-                    
-                        boolean valid = key.reset();
-                        if (!valid) {
-                            watchKeys.remove(key);
-                            if (watchKeys.isEmpty()) {
-                                break;
-                            }
-                        }
-                        LogRecord newLogRecord = null;
-                        if(eventList.size() == 1){
-                            WatchEvent<?> event = eventList.get(0);
-                            WatchEvent.Kind kind = event.kind();
-                            
-                            Path path = dir.resolve(((WatchEvent<Path>) event).context());
-                            if(kind == StandardWatchEventKinds.ENTRY_CREATE){
-                                newLogRecord = new CreateLogRecord(path);
-                                try {
-                                    if (Files.isDirectory(path)) {
-                                        walkAndRegisterDirectories(path);
-                                    }
-                                } catch (IOException ex) {
-                                    ex.printStackTrace();
-                                }
-                            } else if (kind == StandardWatchEventKinds.ENTRY_DELETE){
-                                newLogRecord = new DeleteLogRecord(path);
-                            } else if (kind == StandardWatchEventKinds.ENTRY_MODIFY){
-                                newLogRecord = new UpdateLogRecord(path);
-                            }
-                            
-                            if(newLogRecord != null){
-                                System.out.println(newLogRecord.toString());
-                            }
-                            
-                        }
-                        
-                        if(eventList.size() == 2){
-                            WatchEvent<?> event1 = eventList.get(0);
-                            WatchEvent<?> event2 = eventList.get(1);
-                            if(event1.kind() == StandardWatchEventKinds.ENTRY_DELETE 
-                                    && event2.kind() == StandardWatchEventKinds.ENTRY_CREATE){
-                                Path oldPath = dir.resolve(((WatchEvent<Path>) event1).context());
-                                Path newPath = dir.resolve(((WatchEvent<Path>) event2).context());
-                                newLogRecord = new RenameLogRecord(oldPath, newPath);
-                                System.out.println(newLogRecord.toString());
-                            }
-                        }
-                        
-                        if(newLogRecord != null){
-                            final LogRecord record = newLogRecord;
-                            try {
-                                Socket socket = new Socket(ip, port);
-                                CompletableFuture<Boolean> sendingLogRecordFuture = CompletableFuture.supplyAsync(() -> {
-                                    return ServerComunicator.sendLogRecord(socket, record);
-                                });
-                                sendingLogRecordFuture.thenAccept(successful -> {
-                                    if(!successful){
-                                        JOptionPane.showMessageDialog(null, 
-                                            "Cannot connect to the server!", "Error", 
-                                            JOptionPane.ERROR_MESSAGE);
-                                    }
-                                });
-                            } catch (IOException ex){
-                                ex.printStackTrace();
-                            }
-                        }
-                        
-                    } catch (InterruptedException ex) {
-                        ex.printStackTrace();
-                    }
-                }
-            });
-            t.start();
+            walkAndRegisterDirectories(currentDirectory.toPath(), watchKeys);
+            WatchServiceRunnable watchServiceRunnable = new WatchServiceRunnable(watchKeys);
+            watchServiceRunnable.start();
         } catch (IOException ex) {
             ex.printStackTrace();
         }
@@ -369,9 +418,10 @@ public final class CMainFrame extends JFrame{
         this.addPropertyChangeListener("isConnected", new ConnectionStatusChangeListener());
         //connect panel
         ipTextField = new JTextField(25);
-        ipTextField.setText(ip);
+        ipTextField.setText(ip != null? ip : "");
+        ipTextField.getDocument().addDocumentListener(new ipTextFieldChangeListener());
         portTextField = new JTextField(5);
-        portTextField.setText(port.toString());
+        portTextField.setText(port != null? port.toString() : "");
         connectionStatusLabel = new JLabel("Not connected");
         startButton = new JButton("Start");
         startButton.addActionListener((ActionEvent evt) -> startConnection());
@@ -393,7 +443,7 @@ public final class CMainFrame extends JFrame{
         wrapper2.add(startButton);
         wrapper2.add(stopButton);
         
-        connectPanel = new JPanel();
+        JPanel connectPanel = new JPanel();
         connectPanel.setBorder(BorderFactory.createTitledBorder("Connection"));
         connectPanel.setLayout(new BorderLayout());
         connectPanel.add(wrapper1, BorderLayout.NORTH);
@@ -476,28 +526,54 @@ public final class CMainFrame extends JFrame{
         }
     }
     
+    //server comunication
     private void startConnection(){
-        try {
-            Socket socket = new Socket(ip, port);
-            CompletableFuture<Boolean> sendingGreetingFuture = CompletableFuture.supplyAsync(() -> {
-                return ServerComunicator.sendGreeting(socket);
-            });
-            sendingGreetingFuture.thenAccept(successful -> {
-                if(successful) {
-                    System.out.println("Connected: " + socket);
-                    setIsConnected(true);
-                } else {
-                    JOptionPane.showMessageDialog(null, 
-                        "Cannot connect to server!", "Error", 
-                        JOptionPane.ERROR_MESSAGE);
-                }
-            });
-        } catch (IOException ex) {
-            ex.printStackTrace();
-        }
+        System.out.println("Connect to: " + ip);
+        Socket socket = getSocket();
+        CompletableFuture<Boolean> sendingGreetingFuture = CompletableFuture.supplyAsync(() -> {
+            return ServerComunicator.sendGreeting(socket);
+        });
+        sendingGreetingFuture.thenAccept(successful -> {
+            if(successful) {
+                System.out.println("Connected: " + socket);
+                setIsConnected(true);
+            } else {
+                JOptionPane.showMessageDialog(null, 
+                    "Cannot connect to server!", "Error", 
+                    JOptionPane.ERROR_MESSAGE);
+            }
+        });
     }
     private void stopConnection(){
         setIsConnected(false);
+    }
+    private void sendLogRecord(LogRecord logRecord){
+        Socket socket = getSocket();
+        CompletableFuture<Boolean> sendingLogRecordFuture = CompletableFuture.supplyAsync(() -> {
+            return ServerComunicator.sendLogRecord(socket, logRecord);
+        });
+        sendingLogRecordFuture.thenAccept(successful -> {
+            if(!successful){
+                JOptionPane.showMessageDialog(null, 
+                    "Cannot connect to the server!", "Error", 
+                    JOptionPane.ERROR_MESSAGE);
+            }
+        });
+    }
+    
+    //get socket
+    private Socket getSocket(){
+        try {
+            Socket socket = new Socket(ip, port);
+            socket.setSoTimeout(10*1000);
+            return socket;
+        }catch (IOException ex) {
+            JOptionPane.showMessageDialog(null, 
+                "Cannot connect to server!", "Error", 
+                JOptionPane.ERROR_MESSAGE);
+            ex.printStackTrace();
+        }
+        return null;
     }
     
     public static void main(String[] args) {

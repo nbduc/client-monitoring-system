@@ -16,7 +16,8 @@ public class ClientMessage {
     protected LogRecord payload;
     public enum MessageType{
         GREETING,
-        SENDING_LOG_RECORD;
+        SENDING_LOG_RECORD,
+        OFF;
     }
     
     public MessageType getTitle(){

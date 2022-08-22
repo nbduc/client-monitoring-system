@@ -9,8 +9,8 @@ package smessage;
  *
  * @author duc
  */
-public class GreetingResponseMessage extends ServerMessage{
-    public GreetingResponseMessage(){
-        this.title = MessageType.GREETING_RESPONSE;
+public class OffResponseMessage extends ServerMessage{
+    public OffResponseMessage(){
+        
     }
 }

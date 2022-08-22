@@ -5,21 +5,17 @@
  */
 package cmessage;
 
-import logrecord.LogRecord;
-
-
 /**
  *
  * @author duc
  */
-public class SendingLogRecordMessage extends ClientMessage{
-    public SendingLogRecordMessage(LogRecord record){
-        this.title = MessageType.SENDING_LOG_RECORD;
-        this.payload = record;
+public class OffMessage extends ClientMessage{
+    public OffMessage(){
+        this.title = MessageType.OFF;
     }
     
     @Override
     public String toString(){
-        return title + "," + payload;
+        return title.toString();
     }
 }
