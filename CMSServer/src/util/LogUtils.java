@@ -12,7 +12,7 @@ package util;
 public class LogUtils {
     public static final String LOG_FOLDER = "log";
     
-    public void getClientLogByIp(){
+    public void getClientLogsByIp(){
         
     }
 }

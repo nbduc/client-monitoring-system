@@ -10,6 +10,7 @@ package model;
  * @author duc
  */
 public class Client {
+    private final static String DEFAULT_WATCHED_DIRECTORY = "C:/ClientMonitoringSystem/Data";
     private String ip;
     private Boolean isConnected;
     private String watchedDirectory;
@@ -21,7 +22,15 @@ public class Client {
     }
     
     public Client(){
-        this("", false, "");
+        this("", false, DEFAULT_WATCHED_DIRECTORY);
+    }
+    
+    public Client(String ip){
+        this(ip, false, DEFAULT_WATCHED_DIRECTORY);
+    }
+    
+    public Client(String ip, Boolean isConnected){
+        this(ip, isConnected, DEFAULT_WATCHED_DIRECTORY);
     }
 
     /**
@@ -68,5 +77,9 @@ public class Client {
     
     public String toCsv(){
         return ip + "," + watchedDirectory;
+    }
+    
+    public String toString(){
+        return this.toCsv();
     }
 }

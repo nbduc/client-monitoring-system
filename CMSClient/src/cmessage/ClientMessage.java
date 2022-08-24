@@ -14,7 +14,7 @@ import logrecord.LogRecord;
 public class ClientMessage {
     protected MessageType title;
     protected LogRecord payload;
-    public enum MessageType{
+    public static enum MessageType{
         GREETING,
         SENDING_LOG_RECORD,
         OFF;

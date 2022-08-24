@@ -35,8 +35,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.table.AbstractTableModel;
@@ -119,24 +117,13 @@ public final class CMainFrame extends JFrame{
                                    oldCurrentDirectory, newCurrentDirectory);
     }
     
-    
-    public void addPropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-        propertyChangeSupport.addPropertyChangeListener(propertyName, listener);
-    }
-    public void removePropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-        propertyChangeSupport.removePropertyChangeListener(propertyName, listener);
-    }
-    
     //custom component
     private class DirectoryChooserButton extends JButton{
         private JFileChooser directoryChooser;
         private File currentDirectory;
         private final PropertyChangeSupport propertyChangeSupport = new PropertyChangeSupport(this);
-        public void addPropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-            propertyChangeSupport.addPropertyChangeListener(propertyName, listener);
-        }
-        public void removePropertyChangeListener(String propertyName, PropertyChangeListener listener) {
-            propertyChangeSupport.removePropertyChangeListener(propertyName, listener);
+        public PropertyChangeSupport getPropertyChangeSupport(){
+            return this.propertyChangeSupport;
         }
         private void createUI(){
             directoryChooser = new JFileChooser();
@@ -414,8 +401,8 @@ public final class CMainFrame extends JFrame{
     }
     
     private void createAndShowGUI(){
-        this.addPropertyChangeListener("currentDirectory", new DirectoryChangeListener());
-        this.addPropertyChangeListener("isConnected", new ConnectionStatusChangeListener());
+        this.propertyChangeSupport.addPropertyChangeListener("currentDirectory", new DirectoryChangeListener());
+        this.propertyChangeSupport.addPropertyChangeListener("isConnected", new ConnectionStatusChangeListener());
         //connect panel
         ipTextField = new JTextField(25);
         ipTextField.setText(ip != null? ip : "");
@@ -454,7 +441,8 @@ public final class CMainFrame extends JFrame{
         directoryPathTextField.setEditable(false);
         updateCurrentDirectoryOnUI();
         directoryChooserButton = new DirectoryChooserButton("Choose...", currentDirectory);
-        directoryChooserButton.addPropertyChangeListener("currentDirectory", new DirectoryChangeListener());
+        directoryChooserButton.getPropertyChangeSupport()
+                .addPropertyChangeListener("currentDirectory", new DirectoryChangeListener());
         
         watchDirectoryPanel = new JPanel();
         watchDirectoryPanel.setBorder(BorderFactory.createTitledBorder("Watched Directory"));
@@ -545,7 +533,19 @@ public final class CMainFrame extends JFrame{
         });
     }
     private void stopConnection(){
-        setIsConnected(false);
+        Socket socket = getSocket();
+        CompletableFuture<Boolean> sendingOffFuture = CompletableFuture.supplyAsync(() -> {
+            return ServerComunicator.sendOff(socket);
+        });
+        sendingOffFuture.thenAccept(successful -> {
+            if(successful) {
+                setIsConnected(false);
+            } else {
+                JOptionPane.showMessageDialog(null, 
+                    "Cannot connect to server. Going to stop connecting anyway.", "Error", 
+                    JOptionPane.ERROR_MESSAGE);
+            }
+        });
     }
     private void sendLogRecord(LogRecord logRecord){
         Socket socket = getSocket();
