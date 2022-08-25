@@ -80,6 +80,6 @@ public class Client {
     }
     
     public String toString(){
-        return this.toCsv();
+        return this.ip;
     }
 }

@@ -12,12 +12,9 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import cmessage.GreetingMessage;
-import cmessage.OffMessage;
 import logrecord.LogRecord;
 import cmessage.SendingLogRecordMessage;
 import com.google.gson.Gson;
-import smessage.ServerStatusNotification;
 import smessage.SendingLogRecordReponseMessage;
 
 /**
@@ -35,6 +32,8 @@ public class ServerComunicator {
             //sending message
             SendingLogRecordMessage message = new SendingLogRecordMessage(record);
             bw.write(message.toJsonString());
+            bw.newLine();
+            bw.flush();
             
             //receiving message
             String responseJson = br.readLine();
@@ -46,49 +45,4 @@ public class ServerComunicator {
             return false;
         }
     }
-    
-    public final static Boolean sendGreeting(Socket socket){
-        try (BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(
-                socket.getOutputStream(), StandardCharsets.UTF_8));
-                BufferedReader br = new BufferedReader(new InputStreamReader(
-                    socket.getInputStream(), StandardCharsets.UTF_8));) {
-            //sending message
-            GreetingMessage message = new GreetingMessage();
-            bw.write(message.toJsonString());
-            bw.newLine();
-            bw.flush();
-            
-            //receiving message
-            String responseJson = br.readLine();
-            ServerStatusNotification response = gson.fromJson(responseJson, ServerStatusNotification.class);
-            return response.getStatus();
-            
-        } catch (IOException ex){
-            ex.printStackTrace();
-            return false;
-        }
-    }
-    
-    public final static Boolean sendOff(Socket socket){
-        try (BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(
-                socket.getOutputStream(), StandardCharsets.UTF_8));
-                BufferedReader br = new BufferedReader(new InputStreamReader(
-                    socket.getInputStream(), StandardCharsets.UTF_8));) {
-            //sending message
-            OffMessage message = new OffMessage();
-            bw.write(message.toJsonString());
-            bw.newLine();
-            bw.flush();
-            
-            //receiving message
-            String responseJson = br.readLine();
-            ServerStatusNotification response = gson.fromJson(responseJson, ServerStatusNotification.class);
-            return response.getStatus();
-            
-        } catch (IOException ex){
-            ex.printStackTrace();
-            return false;
-        }
-    }
-    
 }

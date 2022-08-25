@@ -12,7 +12,7 @@ import java.time.Instant;
  *
  * @author duc
  */
-public abstract class LogRecord {
+public class LogRecord {
     protected long time;
     protected Action action;
     protected String description;
@@ -78,6 +78,10 @@ public abstract class LogRecord {
     }
     
     public String toString(){
+        return this.toCsv();
+    }
+    
+    public String toCsv(){
         return this.time + "," + this.action + "," + this.description;
     }
 }

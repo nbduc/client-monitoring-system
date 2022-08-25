@@ -16,14 +16,17 @@ public class ClientMessage {
     protected MessageType title;
     protected LogRecord payload;
     public enum MessageType{
-        GREETING,
         SENDING_LOG_RECORD,
-        OFF;
+        DIRECTORY_TREE_RESPONSE;
     }
     
     public MessageType getTitle(){
         return this.title;
     };
+    
+    public LogRecord getPayload(){
+        return this.payload;
+    }
     
     public String toJsonString(){
         Gson gson = new Gson();

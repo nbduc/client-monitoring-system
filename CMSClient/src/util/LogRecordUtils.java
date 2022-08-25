@@ -28,14 +28,14 @@ public class LogRecordUtils {
             if(!logFile.exists()){
                 logFile.createNewFile();
             }
-            try (PrintWriter pw = new PrintWriter(
-                    new BufferedWriter(
-                            new FileWriter(logFile, true)))){
-                pw.println(convertLogRecordToCsv(record));
-                pw.flush();
+            try (BufferedWriter bw = new BufferedWriter(
+                            new FileWriter(logFile, true))){
+                bw.write(record.toCsv());
+                bw.newLine();
+                bw.flush();
             }
         } catch (IOException ex) {
-            Logger.getLogger(LogRecordUtils.class.getName()).log(Level.SEVERE, null, ex);
+            ex.printStackTrace();
         }
     }
 
@@ -51,9 +51,5 @@ public class LogRecordUtils {
      */
     public void setPath(String path) {
         this.path = path;
-    }
-    
-    public String convertLogRecordToCsv(LogRecord record){
-        return record.toString();
     }
 }

@@ -9,6 +9,7 @@ import cmessage.ClientMessage;
 import com.google.gson.Gson;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.EventQueue;
 import java.awt.FlowLayout;
@@ -34,10 +35,14 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Level;
@@ -46,17 +51,22 @@ import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.table.TableCellRenderer;
+import javax.swing.table.TableColumn;
 import logrecord.LogRecord;
 import model.Client;
+import model.CustomFolder;
 import smessage.ServerStatusNotification;
 import util.ClientCommunicator;
 import util.ClientUtils;
+import util.LogUtils;
 
 /**
  *
  * @author duc
  */
 public class SMainFrame extends JFrame{
+    private final Integer DEFAULT_CLIENT_PORT = 3211;
     public static final String CONNECTED_CLIENTS = "connectedClients";
     public static final String IS_ALL_CLIENTS = "isAllClients";
     public final Integer NUMBER_OF_THREAD = 10;
@@ -71,10 +81,14 @@ public class SMainFrame extends JFrame{
     private JTable logTable;
     private JList clientJList;
     private ButtonGroup clientDisplayButtonGroup;
+    private JTextField clientIpTextField;
+    private JTextField clientWatchedDirTextField;
+    private JButton changeWatchedDirButton;
     
     private ServerSocket serverSocket;
     private Map<String, String> serverIfNetwordList;
     private ClientUtils clientUtils;
+    private Client currentClient;
     
     //property change
     private final PropertyChangeSupport propertyChangeSupport = new PropertyChangeSupport(this);
@@ -176,10 +190,39 @@ public class SMainFrame extends JFrame{
         
     }
     
+    private class ChangeWatchedDirectoryListener implements ActionListener{
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            String clientIp = currentClient.getIp();
+            String path = currentClient.getWatchedDirectory();
+            
+            try {
+                Socket socket = new Socket(clientIp, DEFAULT_CLIENT_PORT);
+                CompletableFuture<CustomFolder> sendingDirectoryTreeRequestFuture = CompletableFuture.supplyAsync(() -> {
+                    return ClientCommunicator.sendDirectoryTreeRequest(socket, path);
+                });
+                sendingDirectoryTreeRequestFuture.thenAccept(tree -> {
+                    //
+                    DirectoryDialog dialog = new DirectoryDialog(getInstance(), tree);
+                });
+                
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(null, 
+                    "Cannot connect to client!", "Error", 
+                    JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+    
     //table model
     private class LogTableModel extends AbstractTableModel {
         private Client client;
         private ArrayList<LogRecord> logRecords;
+        
+        public LogTableModel(){
+            this(new Client(), new ArrayList<>());
+        }
+        
         public LogTableModel(Client client, ArrayList<LogRecord> logRecords){
             super();
             this.client = client;
@@ -195,7 +238,7 @@ public class SMainFrame extends JFrame{
         };
         
         public final Object[] longValues = 
-            {10, "*".repeat(20), "*".repeat(10), "*".repeat(50), 
+            {10, "*".repeat(25), "*".repeat(10), "*".repeat(20), 
                 "*".repeat(100)};
 
         @Override
@@ -207,6 +250,10 @@ public class SMainFrame extends JFrame{
         public int getColumnCount() {
             return columnNames.length;
         }
+        
+        public String getColumnName(int col) {
+            return columnNames[col];
+        }
 
         @Override
         public Object getValueAt(int rowIndex, int columnIndex) {
@@ -216,11 +263,42 @@ public class SMainFrame extends JFrame{
             LogRecord record = logRecords.get(rowIndex);
             switch(columnIndex){
                 case 0: return logRecords.indexOf(record);
-                case 1: return record.getTime();
+                case 1: return LocalDateTime.ofEpochSecond(record.getTime(), 0, ZoneOffset.UTC);
                 case 2: return record.getAction();
                 case 3: return client.getIp();
                 case 4: return record.getDescription();
                 default: return null;
+            }
+        }
+        
+        public Class getColumnClass(int c) {
+            if(logRecords.size() == 0){
+                return Object.class;
+            }
+            return getValueAt(0, c).getClass();
+        }
+        
+        public void initColumnSizes(JTable table) {
+            TableColumn column;
+            Component comp;
+            int headerWidth;
+            int cellWidth;
+            Object[] longValues = this.longValues;
+            TableCellRenderer headerRenderer =
+                table.getTableHeader().getDefaultRenderer();
+
+            for (int i = 0; i < this.getColumnCount(); i++) {
+                column = table.getColumnModel().getColumn(i);
+
+                comp = headerRenderer.getTableCellRendererComponent(
+                    null, column.getHeaderValue(), false, false, 0, 0);
+                headerWidth = comp.getPreferredSize().width;
+
+                comp = table.getDefaultRenderer(this.getColumnClass(i))
+                    .getTableCellRendererComponent(table, longValues[i], false, false, 0, i);
+                cellWidth = comp.getPreferredSize().width;
+
+                column.setPreferredWidth(Math.max(headerWidth, cellWidth));
             }
         }
     }
@@ -279,23 +357,35 @@ public class SMainFrame extends JFrame{
                     socket.getOutputStream(), StandardCharsets.UTF_8));){
                 // Receive data from client
                 String messageJson = br.readLine();
+                System.out.println(messageJson);
                 ClientMessage message = gson.fromJson(messageJson, ClientMessage.class);
+                System.out.println(message);
                 
                 Client client = clientUtils.getClientByIp(clientAddress.getHostAddress());
-                if(message.getTitle() == ClientMessage.MessageType.GREETING){
-                    if (client == null){
-                        //chưa có (client mới)
-                        client = new Client(clientAddress.getHostAddress(), true);
-                        clientUtils.addNewClient(client);
+                
+                if(message.getTitle() == ClientMessage.MessageType.SENDING_LOG_RECORD){
+                    if(message.getPayload().getAction() == LogRecord.Action.LOG_IN){
+                        if (client == null){
+                            //chưa có (client mới)
+                            client = new Client(clientAddress.getHostAddress(), true);
+                            clientUtils.addNewClient(client);
+                        }
+                        clientConnecting(client);
                     }
-                    clientConnecting(client);
-                }
-
-                if(message.getTitle() == ClientMessage.MessageType.OFF){
-                    if (client == null){
-                        System.err.println("Cannot find this client: " + client.toString());
+                    if(message.getPayload().getAction() == LogRecord.Action.LOG_OUT){
+                        if (client == null){
+                            System.err.println("Cannot find this client: " + client.toString());
+                        } else {
+                            clientLeaving(client);
+                        }
                     }
-                    clientLeaving(client);
+                    //ghi log lại
+                    LogUtils.writeLog(client.getIp(), message.getPayload());
+                    
+                    //nếu là current client thì cập nhật log table
+                    if(currentClient == client){
+                        updateLogTable(client);
+                    }
                 }
                 
                 ServerStatusNotification response = new ServerStatusNotification(true);
@@ -319,7 +409,7 @@ public class SMainFrame extends JFrame{
                     try {
                         Socket socket = serverSocket.accept();
                         System.out.println("Client accepted: " + socket);
-
+                        
                         RequestHandler handler = new RequestHandler(socket);
                         executor.execute(handler);
                     } catch (IOException ex) {
@@ -334,7 +424,6 @@ public class SMainFrame extends JFrame{
             JOptionPane.showMessageDialog(null, 
                 "Connection Error: " + ex, "Error", 
                 JOptionPane.ERROR_MESSAGE);
-            Logger.getLogger(SMainFrame.class.getName()).log(Level.SEVERE, null, ex);
         }
     }
     
@@ -417,6 +506,9 @@ public class SMainFrame extends JFrame{
             {
                 if(SwingUtilities.isLeftMouseButton(e)){
                     Client client = (Client)clientJList.getSelectedValue();
+                    currentClient = client;
+                    updateClientInformation(client);
+                    updateLogTable(client);
                 }
             }
         });
@@ -458,24 +550,25 @@ public class SMainFrame extends JFrame{
         
         //client information pane
         JPanel clientInfoPanel = new JPanel();
+        clientInfoPanel.setBorder(BorderFactory.createTitledBorder("Client information"));
         clientInfoPanel.setLayout(new BoxLayout(clientInfoPanel, BoxLayout.Y_AXIS));
         
         JPanel clientIpPanel = new JPanel();
-        clientIpPanel.setBackground(Color.WHITE);
         clientIpPanel.setLayout(new FlowLayout(FlowLayout.LEADING));
         clientIpPanel.add(new JLabel("IP:"));
-        JTextField clientIpTextField = new JTextField(25);
+        clientIpTextField = new JTextField(25);
         clientIpTextField.setEditable(false);
         clientIpPanel.add(clientIpTextField);
         
         JPanel clientWatchedDirPanel = new JPanel();
-        clientWatchedDirPanel.setBackground(Color.WHITE);
         clientWatchedDirPanel.setLayout(new FlowLayout(FlowLayout.LEADING));
         clientWatchedDirPanel.add(new JLabel("Watched directory:"));
-        JTextField clientWatchedDirTextField = new JTextField(40);
+        clientWatchedDirTextField = new JTextField(40);
         clientWatchedDirTextField.setEditable(false);
         clientWatchedDirPanel.add(clientWatchedDirTextField);
-        JButton changeWatchedDirButton = new JButton("Change...");
+        changeWatchedDirButton = new JButton("Change...");
+        changeWatchedDirButton.setEnabled(false);
+        changeWatchedDirButton.addActionListener(new ChangeWatchedDirectoryListener());
         clientWatchedDirPanel.add(changeWatchedDirButton);
         
         clientInfoPanel.add(clientIpPanel);
@@ -483,14 +576,9 @@ public class SMainFrame extends JFrame{
         
         //log table
         logTable = new JTable();
-        
-        //client log pane
-        JPanel clientLogPanel = new JPanel();
-        
-        // set tabbed pane
-        JTabbedPane tabbedPane = new JTabbedPane();
-        tabbedPane.add("Client information", clientInfoPanel);
-        tabbedPane.add("Change logs", clientLogPanel);
+        updateLogTable(null);
+        JScrollPane tableScrollPane = new JScrollPane(logTable);
+        tableScrollPane.setBorder(BorderFactory.createTitledBorder("Change logs"));
         
         //set right pane
         JPanel rightPane = new JPanel();
@@ -498,7 +586,8 @@ public class SMainFrame extends JFrame{
         rightPane.add(serverInfoPanel, BorderLayout.NORTH);
         JPanel rightBottomPanel = new JPanel();
         rightBottomPanel.setLayout(new BorderLayout());
-        rightBottomPanel.add(tabbedPane, BorderLayout.NORTH);
+        rightBottomPanel.add(clientInfoPanel, BorderLayout.NORTH);
+        rightBottomPanel.add(tableScrollPane, BorderLayout.CENTER);
         rightPane.add(rightBottomPanel, BorderLayout.CENTER);
         
         JSplitPane mainPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPane, rightPane);
@@ -506,7 +595,7 @@ public class SMainFrame extends JFrame{
         //contentPane
         getContentPane().add(mainPane);
         setTitle("Client Monitoring System (Server)");
-        pack();
+        setSize(950, 600);
         setLocationRelativeTo(null);
         addWindowListener(new WindowAdapter() {
             @Override
@@ -557,6 +646,15 @@ public class SMainFrame extends JFrame{
                 removeConnectedClient(client);
                 updateClientCount();
                 updateNotification(client.getIp()+" just left.");
+                if(client == currentClient){
+                    if(!isAllClients){
+                        updateClientInformation(null);
+                        updateLogTable(null);
+                        JOptionPane.showMessageDialog(null, 
+                            "Client: " + client.getIp() + " just left." , "About", 
+                            JOptionPane.INFORMATION_MESSAGE);
+                    }
+                }
             });
         }
     }
@@ -569,6 +667,31 @@ public class SMainFrame extends JFrame{
             newModel.addAll(clientUtils.getAllClients());
         }
         clientJList.setModel(newModel);
+    }
+    
+    private void updateClientInformation(Client client){
+        if(client != null){
+            changeWatchedDirButton.setEnabled(true);
+            clientIpTextField.setText(client.getIp());
+            clientWatchedDirTextField.setText(client.getWatchedDirectory());
+            
+        } else {
+            changeWatchedDirButton.setEnabled(false);
+            clientIpTextField.setText("");
+            clientWatchedDirTextField.setText("");
+        }
+    }
+    
+    private void updateLogTable(Client client){
+        LogTableModel model;
+        if(client != null){
+            model = new LogTableModel(client, LogUtils.getLogsByIp(client.getIp()));
+            
+        } else {
+            model = new LogTableModel();
+        }
+        logTable.setModel(model);
+        model.initColumnSizes(logTable);
     }
     
     public static void main(String[] args) {

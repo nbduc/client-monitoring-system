@@ -4,6 +4,8 @@
  * and open the template in the editor.
  */
 package gui;
+import cmessage.ClientMessage;
+import com.google.gson.Gson;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.FlowLayout;
@@ -15,11 +17,18 @@ import java.awt.event.WindowAdapter;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.beans.PropertyChangeSupport;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.net.InetAddress;
+import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -35,15 +44,23 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.event.DocumentListener;
 import logrecord.CreateLogRecord;
 import logrecord.DeleteLogRecord;
+import logrecord.LogInLogRecord;
+import logrecord.LogOutLogRecord;
 import logrecord.LogRecord;
 import logrecord.RenameLogRecord;
 import logrecord.UpdateLogRecord;
+import model.CustomFolder;
+import smessage.DirectoryTreeRequest;
+import smessage.ServerMessage;
+import util.DirectoryTreeUtil;
 import util.ServerComunicator;
 
 /**
@@ -55,6 +72,9 @@ public final class CMainFrame extends JFrame{
     private final String DEFAULT_IP = "127.0.0.1";
     private final Integer DEFAULT_PORT = 3210;
     private final String DEFAULT_DIRECTORY = "C:/ClientMonitoringSystem/Data";
+    private final Integer DEFAULT_CLIENT_PORT = 3211;
+    private ServerSocket serverSocket;
+    private Gson gson = new Gson();
     
     private JTextField ipTextField;
     private JTextField portTextField;
@@ -265,9 +285,68 @@ public final class CMainFrame extends JFrame{
     
     //frame constructor
     public CMainFrame(){
+        initServerSocket();
         initPropertyValues();
         initWatchService();
         createAndShowGUI();
+    }
+    
+    private class RequestHandler implements Runnable{
+        private final Socket socket;
+        public RequestHandler(Socket socket){
+            this.socket = socket;
+        }
+
+        @Override
+        public void run() {
+            try(BufferedReader br = new BufferedReader(new InputStreamReader(
+                    socket.getInputStream(), StandardCharsets.UTF_8));
+                    BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(
+                    socket.getOutputStream(), StandardCharsets.UTF_8));){
+                // Receive request from server
+                String messageJson = br.readLine();
+                ServerMessage message = gson.fromJson(messageJson, ServerMessage.class);
+                if(message.getTitle() == ServerMessage.MessageType.DIRECTORY_TREE_REQUEST){
+                    String path = (gson.fromJson(messageJson, DirectoryTreeRequest.class)).getRequestedPath();
+                    
+//                    CustomFolder folder = DirectoryTreeUtil.getWholeDirectoryTree();
+                    
+//                    bw.write(folder.toJson());
+                    bw.newLine();
+                    bw.flush();
+                }
+            } catch (IOException ex){
+                ex.printStackTrace();
+            }
+        }
+    }
+    
+    private void initServerSocket(){
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            serverSocket = new ServerSocket(DEFAULT_CLIENT_PORT);
+            System.out.println("Client server started: " + serverSocket);
+            Thread thread = new Thread(() -> {
+                while (true) {
+                    try {
+                        Socket socket = serverSocket.accept();
+                        System.out.println("Server accepted: " + socket);
+                        
+                        RequestHandler handler = new RequestHandler(socket);
+                        executor.execute(handler);
+                    } catch (IOException ex) {
+                        JOptionPane.showMessageDialog(null, 
+                            "Connection Error: " + ex, "Error", 
+                            JOptionPane.ERROR_MESSAGE);
+                    }
+                }
+            });
+            thread.start();
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(null, 
+                "Connection Error: " + ex, "Error", 
+                JOptionPane.ERROR_MESSAGE);
+        }
     }
     
     private void initPropertyValues(){
@@ -491,7 +570,9 @@ public final class CMainFrame extends JFrame{
                     JOptionPane.YES_NO_OPTION, 
                     JOptionPane.QUESTION_MESSAGE);
                 if (option == JOptionPane.YES_OPTION){
-                    stopConnection();
+                    if(isConnected){
+                        stopConnection();
+                    }
                     System.exit(0);
                 }
             }
@@ -518,47 +599,58 @@ public final class CMainFrame extends JFrame{
     private void startConnection(){
         System.out.println("Connect to: " + ip);
         Socket socket = getSocket();
-        CompletableFuture<Boolean> sendingGreetingFuture = CompletableFuture.supplyAsync(() -> {
-            return ServerComunicator.sendGreeting(socket);
-        });
-        sendingGreetingFuture.thenAccept(successful -> {
-            if(successful) {
-                System.out.println("Connected: " + socket);
-                setIsConnected(true);
-            } else {
-                JOptionPane.showMessageDialog(null, 
-                    "Cannot connect to server!", "Error", 
-                    JOptionPane.ERROR_MESSAGE);
-            }
-        });
+        if(socket != null) {
+            CompletableFuture<Boolean> sendingGreetingFuture = CompletableFuture.supplyAsync(() -> {
+            return ServerComunicator.sendLogRecord(socket, new LogInLogRecord());
+            });
+            sendingGreetingFuture.thenAccept(successful -> {
+                if(successful) {
+                    System.out.println("Connected: " + socket);
+                    setIsConnected(true);
+                } else {
+                    JOptionPane.showMessageDialog(null, 
+                        "Cannot connect to server!", "Error", 
+                        JOptionPane.ERROR_MESSAGE);
+                }
+            });
+        } else {
+            JOptionPane.showMessageDialog(null, 
+                "Cannot connect to server!", "Error", 
+                JOptionPane.ERROR_MESSAGE);
+        }
     }
     private void stopConnection(){
         Socket socket = getSocket();
-        CompletableFuture<Boolean> sendingOffFuture = CompletableFuture.supplyAsync(() -> {
-            return ServerComunicator.sendOff(socket);
-        });
-        sendingOffFuture.thenAccept(successful -> {
-            if(successful) {
-                setIsConnected(false);
-            } else {
-                JOptionPane.showMessageDialog(null, 
-                    "Cannot connect to server. Going to stop connecting anyway.", "Error", 
-                    JOptionPane.ERROR_MESSAGE);
-            }
-        });
+        if(socket != null){
+            CompletableFuture<Boolean> sendingOffFuture = CompletableFuture.supplyAsync(() -> {
+                return ServerComunicator.sendLogRecord(socket, new LogOutLogRecord());
+            });
+            sendingOffFuture.thenAccept(successful -> {
+                if(successful) {
+                    setIsConnected(false);
+                } else {
+                    JOptionPane.showMessageDialog(null, 
+                        "Cannot connect to server. Going to stop connecting anyway.", "Error", 
+                        JOptionPane.ERROR_MESSAGE);
+                }
+            });
+        }
+        
     }
     private void sendLogRecord(LogRecord logRecord){
         Socket socket = getSocket();
-        CompletableFuture<Boolean> sendingLogRecordFuture = CompletableFuture.supplyAsync(() -> {
-            return ServerComunicator.sendLogRecord(socket, logRecord);
-        });
-        sendingLogRecordFuture.thenAccept(successful -> {
-            if(!successful){
-                JOptionPane.showMessageDialog(null, 
-                    "Cannot connect to the server!", "Error", 
-                    JOptionPane.ERROR_MESSAGE);
-            }
-        });
+        if(socket != null){
+            CompletableFuture<Boolean> sendingLogRecordFuture = CompletableFuture.supplyAsync(() -> {
+                return ServerComunicator.sendLogRecord(socket, logRecord);
+            });
+            sendingLogRecordFuture.thenAccept(successful -> {
+                if(successful){
+                    System.out.println("Successful sending log");
+                } else {
+                    System.err.println("Server refused to receive log.");
+                }
+            });
+        }
     }
     
     //get socket
@@ -568,12 +660,9 @@ public final class CMainFrame extends JFrame{
             socket.setSoTimeout(10*1000);
             return socket;
         }catch (IOException ex) {
-            JOptionPane.showMessageDialog(null, 
-                "Cannot connect to server!", "Error", 
-                JOptionPane.ERROR_MESSAGE);
-            ex.printStackTrace();
+            //server ngỏm rồi
+            return null;
         }
-        return null;
     }
     
     public static void main(String[] args) {

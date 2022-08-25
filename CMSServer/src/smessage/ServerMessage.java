@@ -15,7 +15,8 @@ public class ServerMessage {
     
     public enum MessageType{
         GREETING_RESPONSE,
-        SENDING_LOG_RECORD_RESPONSE
+        SENDING_LOG_RECORD_RESPONSE,
+        DIRECTORY_TREE_REQUEST,
     }
     
     public MessageType getTitle(){
