@@ -12,6 +12,6 @@ package logrecord;
 public class LogOutLogRecord extends LogRecord{
     public LogOutLogRecord(){
         super(Action.LOG_OUT);
-        this.description = String.format("Log out");
+        this.description = String.format("Log out successfully.");
     }
 }

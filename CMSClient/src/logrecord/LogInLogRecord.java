@@ -12,6 +12,6 @@ package logrecord;
 public class LogInLogRecord extends LogRecord{
     public LogInLogRecord(){
         super(Action.LOG_IN);
-        this.description = String.format("Log in");
+        this.description = String.format("Log in successfully.");
     }
 }

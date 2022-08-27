@@ -686,7 +686,6 @@ public class SMainFrame extends JFrame{
         LogTableModel model;
         if(client != null){
             model = new LogTableModel(client, LogUtils.getLogsByIp(client.getIp()));
-            
         } else {
             model = new LogTableModel();
         }

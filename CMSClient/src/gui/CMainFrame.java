@@ -8,11 +8,13 @@ import cmessage.ClientMessage;
 import com.google.gson.Gson;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
@@ -39,17 +41,32 @@ import java.nio.file.WatchKey;
 import java.nio.file.WatchEvent;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.StandardWatchEventKinds;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.regex.PatternSyntaxException;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.event.DocumentListener;
+import javax.swing.table.TableCellRenderer;
+import javax.swing.table.TableColumn;
+import javax.swing.table.TableRowSorter;
+import javax.swing.table.DefaultTableCellRenderer;
 import logrecord.CreateLogRecord;
 import logrecord.DeleteLogRecord;
 import logrecord.LogInLogRecord;
@@ -61,6 +78,7 @@ import model.CustomFolder;
 import smessage.DirectoryTreeRequest;
 import smessage.ServerMessage;
 import util.DirectoryTreeUtil;
+import util.LogRecordUtils;
 import util.ServerComunicator;
 
 /**
@@ -86,7 +104,14 @@ public final class CMainFrame extends JFrame{
     
     private JTextField directoryPathTextField;
     private DirectoryChooserButton directoryChooserButton;
-    private JPanel logPanel;
+    private JTable logTable;
+    private JComboBox actionComboBox;
+    private JTextField startDateTextField;
+    private JTextField endDateTextField;
+    
+    private TableRowSorter<LogRecordTableModel> sorter;
+    private List<RowFilter<Object, Object>> filters;
+    private TableCellRenderer logTableCellRenderer;
     
     private WatchService watchService;
     private Map<WatchKey, Path> watchKeys;
@@ -180,10 +205,14 @@ public final class CMainFrame extends JFrame{
             this.logRecordList = logRecordList;
         }
         private final String[] columnNames = {
+            "#",
             "Time",
             "Action",
             "Desciption"
         };
+        
+        public final Object[] longValues = 
+            {10, new Date(), "*".repeat(10), "*".repeat(100)};
 
         @Override
         public int getRowCount() {
@@ -194,6 +223,10 @@ public final class CMainFrame extends JFrame{
         public int getColumnCount() {
             return columnNames.length;
         }
+        
+        public String getColumnName(int col) {
+            return columnNames[col];
+        }
 
         @Override
         public Object getValueAt(int rowIndex, int columnIndex) {
@@ -202,13 +235,47 @@ public final class CMainFrame extends JFrame{
             } 
             LogRecord record = logRecordList.get(rowIndex);
             switch(columnIndex){
-                case 0: return record.getTime();
-                case 1: return record.getAction();
-                case 2: return record.getDescription();
+                case 0: return logRecordList.indexOf(record);
+                case 1: return new Date(record.getTime() * 1000);
+                case 2: return record.getAction();
+                case 3: return record.getDescription();
                 default: return null;
             }
         }
         
+        public Class getColumnClass(int c) {
+            if(logRecordList.size() == 0){
+                return Object.class;
+            }
+            return getValueAt(0, c).getClass();
+        }
+        
+        public void initColumnSizes(JTable table) {
+            TableColumn column;
+            Component comp;
+            int headerWidth;
+            int cellWidth;
+            Object[] longValues = this.longValues;
+            TableCellRenderer headerRenderer =
+                table.getTableHeader().getDefaultRenderer();
+
+            for (int i = 0; i < this.getColumnCount(); i++) {
+                column = table.getColumnModel().getColumn(i);
+
+                comp = headerRenderer.getTableCellRendererComponent(
+                    null, column.getHeaderValue(), false, false, 0, 0);
+                headerWidth = comp.getPreferredSize().width;
+
+                if(i == 1){
+                    System.out.println(this.getColumnClass(i));
+                }
+                comp = table.getDefaultRenderer(this.getColumnClass(i))
+                    .getTableCellRendererComponent(table, longValues[i], false, false, 0, i);
+                cellWidth = comp.getPreferredSize().width;
+
+                column.setPreferredWidth(Math.max(headerWidth, cellWidth));
+            }
+        }
     }
     
     //listeners
@@ -308,10 +375,6 @@ public final class CMainFrame extends JFrame{
                 ServerMessage message = gson.fromJson(messageJson, ServerMessage.class);
                 if(message.getTitle() == ServerMessage.MessageType.DIRECTORY_TREE_REQUEST){
                     String path = (gson.fromJson(messageJson, DirectoryTreeRequest.class)).getRequestedPath();
-                    
-//                    CustomFolder folder = DirectoryTreeUtil.getWholeDirectoryTree();
-                    
-//                    bw.write(folder.toJson());
                     bw.newLine();
                     bw.flush();
                 }
@@ -365,6 +428,14 @@ public final class CMainFrame extends JFrame{
             boolean result = currentDirectory.mkdirs();
             System.out.println(result);
         }
+        
+        logTableCellRenderer = new DefaultTableCellRenderer(){
+            SimpleDateFormat formatter = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
+            public Component getTableCellRendererComponent(JTable table, Object value, 
+                    boolean isSelected, boolean hasFocus, int row, int column){
+                return super.getTableCellRendererComponent(table, formatter.format(value), isSelected, hasFocus, row, column);
+            }
+        };
     }
     private void walkAndRegisterDirectories(final Path start, Map<WatchKey, Path> watchKeys) throws IOException {
         Files.walkFileTree(start, new SimpleFileVisitor<Path>() {
@@ -442,6 +513,9 @@ public final class CMainFrame extends JFrame{
                             newLogRecord = new RenameLogRecord(oldPath, newPath);
                         }
                     }
+                    
+                    LogRecordUtils.writeLog(newLogRecord);
+                    updateLogTable();
 
                     if(newLogRecord != null){
                         sendLogRecord(newLogRecord);
@@ -476,6 +550,14 @@ public final class CMainFrame extends JFrame{
             watchServiceRunnable.start();
         } catch (IOException ex) {
             ex.printStackTrace();
+        }
+    }
+    
+    public static Date parseDate(String date) {
+        try {
+            return new SimpleDateFormat("dd/MM/yyyy").parse(date);
+        } catch (ParseException e) {
+            return null;
         }
     }
     
@@ -551,9 +633,92 @@ public final class CMainFrame extends JFrame{
         connectAndWatchDirectoryWrapper.add(connectPanel);
         connectAndWatchDirectoryWrapper.add(watchDirectoryPanel);
         
+        //log table
+        logTable = new JTable();
+        updateLogTable();
+        JScrollPane logScrollPanel = new JScrollPane(logTable);
+        
+        //filter panel
+        filters = new ArrayList<>();
+        RowFilter<Object, Object> defaultActionFilter = RowFilter.regexFilter("", 2);
+        RowFilter<Object, Object> defaultStartDateFilter = RowFilter.dateFilter(
+                RowFilter.ComparisonType.AFTER, 
+                parseDate("01/01/1990"), 1);
+        RowFilter<Object, Object> defaultEndDateFilter = RowFilter.dateFilter(
+                RowFilter.ComparisonType.BEFORE, 
+                new Date(), 1);
+        filters.add(defaultActionFilter);
+        filters.add(defaultStartDateFilter);
+        filters.add(defaultEndDateFilter);
+        DefaultComboBoxModel actionModel = new DefaultComboBoxModel();
+        actionModel.addElement("All actions");
+        actionModel.addAll(Arrays.asList(LogRecord.Action.values()));
+        actionComboBox = new JComboBox(actionModel);
+        actionComboBox.addActionListener((evt) -> {
+            RowFilter<Object, Object> rf = null;
+            try {
+                LogRecord.Action action = (LogRecord.Action)actionComboBox.getSelectedItem();
+                rf = RowFilter.regexFilter(action.toString(), 2);
+            } catch (PatternSyntaxException | ClassCastException e) {
+                rf = defaultActionFilter;
+            }
+            filters.set(0, rf);
+            sorter.setRowFilter(RowFilter.andFilter(filters));
+        });
+        
+        SimpleDateFormat formatter = new SimpleDateFormat("dd/MM/yyyy");
+        startDateTextField = new JTextField(10);
+        startDateTextField.setText("01/01/2022");
+        startDateTextField.addActionListener((event) -> {
+            RowFilter<Object, Object> rf = null;
+            try{
+                Date startDate = formatter.parse(startDateTextField.getText());
+                System.out.println(startDate.compareTo(new Date()));
+                if(startDate.compareTo(new Date()) <= 0){
+                    rf = RowFilter.dateFilter(RowFilter.ComparisonType.AFTER, startDate, 1);
+                } else {
+                    rf = defaultStartDateFilter;
+                }
+            } catch(ParseException ex){
+                rf = null;
+            }
+            filters.set(1, rf);
+            sorter.setRowFilter(RowFilter.andFilter(filters));
+        });
+        endDateTextField = new JTextField(10);
+        endDateTextField.setText(formatter.format(new Date()));
+        endDateTextField.addActionListener((event) -> {
+            RowFilter<Object, Object> rf = null;
+            try{
+                Date endDate = formatter.parse(startDateTextField.getText());
+                if(endDate.compareTo(new Date()) <= 0){
+                    rf = RowFilter.dateFilter(RowFilter.ComparisonType.BEFORE, endDate, 1);
+                } else {
+                    rf = defaultEndDateFilter;
+                }
+            } catch(ParseException ex){
+                rf = null;
+            }
+            filters.set(2, rf);
+            sorter.setRowFilter(RowFilter.andFilter(filters));
+        });
+        
+        JPanel filterPanel = new JPanel();
+        filterPanel.setLayout(new FlowLayout(FlowLayout.LEADING));
+        filterPanel.add(new JLabel("Action:"));
+        filterPanel.add(actionComboBox);
+        filterPanel.add(new JLabel("   Time:"));
+        filterPanel.add(startDateTextField);
+        filterPanel.add(new JLabel("-"));
+        filterPanel.add(endDateTextField);
+        
         //log panel
-        logPanel = new JPanel();
+        JPanel logPanel = new JPanel();
         logPanel.setBorder(BorderFactory.createTitledBorder("Change Logs"));
+        logPanel.setLayout(new BorderLayout());
+        
+        logPanel.add(filterPanel, BorderLayout.NORTH);
+        logPanel.add(logScrollPanel, BorderLayout.CENTER);
         
         //contentPane
         getContentPane().setLayout(new BorderLayout());
@@ -582,31 +747,60 @@ public final class CMainFrame extends JFrame{
     
     //update methods
     private void updateConnectionStatusOnUI(){
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> {
+                updateConnectionStatusOnUI();
+            });
+            return;
+        }
         startButton.setEnabled(!isConnected);
         stopButton.setEnabled(isConnected);
         connectionStatusLabel.setForeground(isConnected? Color.BLUE : Color.RED);
         connectionStatusLabel.setText(isConnected? "Connected" : "Not Connected");
     }
     private void updateCurrentDirectoryOnUI(){
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> {
+                updateCurrentDirectoryOnUI();
+            });
+            return;
+        }
         if(currentDirectory != null){
             directoryPathTextField.setText(currentDirectory.toPath().toString());
         } else {
             directoryPathTextField.setText(null);
         }
     }
+    private void updateLogTable(){
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> {
+                updateLogTable();
+            });
+            return;
+        }
+        LogRecordTableModel model = new LogRecordTableModel(LogRecordUtils.readAllLogs());
+        logTable.setModel(model);
+        logTable.getColumnModel().getColumn(1).setCellRenderer(logTableCellRenderer);
+        model.initColumnSizes(logTable);
+        sorter = new TableRowSorter<>(model);
+        logTable.setRowSorter(sorter);
+    }
     
     //server comunication
     private void startConnection(){
-        System.out.println("Connect to: " + ip);
+        LogInLogRecord logInLogRecord = new LogInLogRecord();
+        
         Socket socket = getSocket();
         if(socket != null) {
             CompletableFuture<Boolean> sendingGreetingFuture = CompletableFuture.supplyAsync(() -> {
-            return ServerComunicator.sendLogRecord(socket, new LogInLogRecord());
+            return ServerComunicator.sendLogRecord(socket, logInLogRecord);
             });
             sendingGreetingFuture.thenAccept(successful -> {
                 if(successful) {
                     System.out.println("Connected: " + socket);
                     setIsConnected(true);
+                    LogRecordUtils.writeLog(logInLogRecord);
+                    updateLogTable();
                 } else {
                     JOptionPane.showMessageDialog(null, 
                         "Cannot connect to server!", "Error", 
@@ -620,14 +814,18 @@ public final class CMainFrame extends JFrame{
         }
     }
     private void stopConnection(){
+        LogOutLogRecord logOutLogRecord = new LogOutLogRecord();
+        
         Socket socket = getSocket();
         if(socket != null){
             CompletableFuture<Boolean> sendingOffFuture = CompletableFuture.supplyAsync(() -> {
-                return ServerComunicator.sendLogRecord(socket, new LogOutLogRecord());
+                return ServerComunicator.sendLogRecord(socket, logOutLogRecord);
             });
             sendingOffFuture.thenAccept(successful -> {
                 if(successful) {
                     setIsConnected(false);
+                    LogRecordUtils.writeLog(logOutLogRecord);
+                    updateLogTable();
                 } else {
                     JOptionPane.showMessageDialog(null, 
                         "Cannot connect to server. Going to stop connecting anyway.", "Error", 
