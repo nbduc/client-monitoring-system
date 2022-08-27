@@ -426,7 +426,6 @@ public final class CMainFrame extends JFrame{
         currentDirectory = new File(DEFAULT_DIRECTORY);
         if(!currentDirectory.exists()){
             boolean result = currentDirectory.mkdirs();
-            System.out.println(result);
         }
         
         logTableCellRenderer = new DefaultTableCellRenderer(){
@@ -673,7 +672,6 @@ public final class CMainFrame extends JFrame{
             RowFilter<Object, Object> rf = null;
             try{
                 Date startDate = formatter.parse(startDateTextField.getText());
-                System.out.println(startDate.compareTo(new Date()));
                 if(startDate.compareTo(new Date()) <= 0){
                     rf = RowFilter.dateFilter(RowFilter.ComparisonType.AFTER, startDate, 1);
                 } else {

@@ -35,9 +35,13 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
@@ -47,12 +51,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.PatternSyntaxException;
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableColumn;
+import javax.swing.table.TableRowSorter;
 import logrecord.LogRecord;
 import model.Client;
 import model.CustomFolder;
@@ -89,6 +96,14 @@ public class SMainFrame extends JFrame{
     private Map<String, String> serverIfNetwordList;
     private ClientUtils clientUtils;
     private Client currentClient;
+    
+    private JComboBox actionComboBox;
+    private JTextField startDateTextField;
+    private JTextField endDateTextField;
+    
+    private TableRowSorter<LogTableModel> sorter;
+    private ArrayList<RowFilter<Object, Object>> filters;
+    private TableCellRenderer logTableCellRenderer;
     
     //property change
     private final PropertyChangeSupport propertyChangeSupport = new PropertyChangeSupport(this);
@@ -238,7 +253,7 @@ public class SMainFrame extends JFrame{
         };
         
         public final Object[] longValues = 
-            {10, "*".repeat(25), "*".repeat(10), "*".repeat(20), 
+            {10, new Date(), "*".repeat(10), "*".repeat(20), 
                 "*".repeat(100)};
 
         @Override
@@ -263,7 +278,7 @@ public class SMainFrame extends JFrame{
             LogRecord record = logRecords.get(rowIndex);
             switch(columnIndex){
                 case 0: return logRecords.indexOf(record);
-                case 1: return LocalDateTime.ofEpochSecond(record.getTime(), 0, ZoneOffset.UTC);
+                case 1: return new Date(record.getTime() * 1000);
                 case 2: return record.getAction();
                 case 3: return client.getIp();
                 case 4: return record.getDescription();
@@ -314,6 +329,13 @@ public class SMainFrame extends JFrame{
         this.clientUtils = new ClientUtils();
         this.clientUtils.getPropertyChangeSupport()
                 .addPropertyChangeListener(ClientUtils.CLIENT_LIST, new AllClientsChangeListener());
+        this.logTableCellRenderer = new DefaultTableCellRenderer(){
+            SimpleDateFormat formatter = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
+            public Component getTableCellRendererComponent(JTable table, Object value, 
+                    boolean isSelected, boolean hasFocus, int row, int column){
+                return super.getTableCellRendererComponent(table, formatter.format(value), isSelected, hasFocus, row, column);
+            }
+        };
         initServerSocket();
         createAndShowGUI();
     }
@@ -424,6 +446,14 @@ public class SMainFrame extends JFrame{
             JOptionPane.showMessageDialog(null, 
                 "Connection Error: " + ex, "Error", 
                 JOptionPane.ERROR_MESSAGE);
+        }
+    }
+    
+    public static Date parseDate(String date) {
+        try {
+            return new SimpleDateFormat("dd/MM/yyyy").parse(date);
+        } catch (ParseException e) {
+            return null;
         }
     }
     
@@ -578,16 +608,95 @@ public class SMainFrame extends JFrame{
         logTable = new JTable();
         updateLogTable(null);
         JScrollPane tableScrollPane = new JScrollPane(logTable);
-        tableScrollPane.setBorder(BorderFactory.createTitledBorder("Change logs"));
+        
+        //filter panel
+        filters = new ArrayList<>();
+        RowFilter<Object, Object> defaultActionFilter = RowFilter.regexFilter("", 2);
+        RowFilter<Object, Object> defaultStartDateFilter = RowFilter.dateFilter(
+                RowFilter.ComparisonType.AFTER, 
+                parseDate("01/01/1990"), 1);
+        RowFilter<Object, Object> defaultEndDateFilter = RowFilter.dateFilter(
+                RowFilter.ComparisonType.BEFORE, 
+                new Date(), 1);
+        filters.add(defaultActionFilter);
+        filters.add(defaultStartDateFilter);
+        filters.add(defaultEndDateFilter);
+        DefaultComboBoxModel actionModel = new DefaultComboBoxModel();
+        actionModel.addElement("All actions");
+        actionModel.addAll(Arrays.asList(LogRecord.Action.values()));
+        actionComboBox = new JComboBox(actionModel);
+        actionComboBox.addActionListener((evt) -> {
+            RowFilter<Object, Object> rf = null;
+            try {
+                LogRecord.Action action = (LogRecord.Action)actionComboBox.getSelectedItem();
+                rf = RowFilter.regexFilter(action.toString(), 2);
+            } catch (PatternSyntaxException | ClassCastException e) {
+                rf = defaultActionFilter;
+            }
+            filters.set(0, rf);
+            sorter.setRowFilter(RowFilter.andFilter(filters));
+        });
+        
+        SimpleDateFormat formatter = new SimpleDateFormat("dd/MM/yyyy");
+        startDateTextField = new JTextField(10);
+        startDateTextField.setText("01/01/2022");
+        startDateTextField.addActionListener((event) -> {
+            RowFilter<Object, Object> rf = null;
+            try{
+                Date startDate = formatter.parse(startDateTextField.getText());
+                if(startDate.compareTo(new Date()) <= 0){
+                    rf = RowFilter.dateFilter(RowFilter.ComparisonType.AFTER, startDate, 1);
+                } else {
+                    rf = defaultStartDateFilter;
+                }
+            } catch(ParseException ex){
+                rf = null;
+            }
+            filters.set(1, rf);
+            sorter.setRowFilter(RowFilter.andFilter(filters));
+        });
+        endDateTextField = new JTextField(10);
+        endDateTextField.setText(formatter.format(new Date()));
+        endDateTextField.addActionListener((event) -> {
+            RowFilter<Object, Object> rf = null;
+            try{
+                Date endDate = formatter.parse(startDateTextField.getText());
+                if(endDate.compareTo(new Date()) <= 0){
+                    rf = RowFilter.dateFilter(RowFilter.ComparisonType.BEFORE, endDate, 1);
+                } else {
+                    rf = defaultEndDateFilter;
+                }
+            } catch(ParseException ex){
+                rf = null;
+            }
+            filters.set(2, rf);
+            sorter.setRowFilter(RowFilter.andFilter(filters));
+        });
+        
+        JPanel filterPanel = new JPanel();
+        filterPanel.setLayout(new FlowLayout(FlowLayout.LEADING));
+        filterPanel.add(new JLabel("Action:"));
+        filterPanel.add(actionComboBox);
+        filterPanel.add(new JLabel("   Time:"));
+        filterPanel.add(startDateTextField);
+        filterPanel.add(new JLabel("-"));
+        filterPanel.add(endDateTextField);
         
         //set right pane
         JPanel rightPane = new JPanel();
         rightPane.setLayout(new BorderLayout());
         rightPane.add(serverInfoPanel, BorderLayout.NORTH);
+        
+        JPanel logPanel = new JPanel();
+        logPanel.setLayout(new BorderLayout());
+        logPanel.setBorder(BorderFactory.createTitledBorder("Change logs"));
+        logPanel.add(filterPanel, BorderLayout.NORTH);
+        logPanel.add(tableScrollPane, BorderLayout.CENTER);
+        
         JPanel rightBottomPanel = new JPanel();
         rightBottomPanel.setLayout(new BorderLayout());
         rightBottomPanel.add(clientInfoPanel, BorderLayout.NORTH);
-        rightBottomPanel.add(tableScrollPane, BorderLayout.CENTER);
+        rightBottomPanel.add(logPanel, BorderLayout.CENTER);
         rightPane.add(rightBottomPanel, BorderLayout.CENTER);
         
         JSplitPane mainPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftPane, rightPane);
@@ -690,7 +799,10 @@ public class SMainFrame extends JFrame{
             model = new LogTableModel();
         }
         logTable.setModel(model);
+        logTable.getColumnModel().getColumn(1).setCellRenderer(logTableCellRenderer);
         model.initColumnSizes(logTable);
+        sorter = new TableRowSorter<>(model);
+        logTable.setRowSorter(sorter);
     }
     
     public static void main(String[] args) {
