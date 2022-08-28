@@ -103,7 +103,7 @@ public final class CMainFrame extends JFrame{
     private JPanel watchDirectoryPanel;
     
     private JTextField directoryPathTextField;
-    private DirectoryChooserButton directoryChooserButton;
+//    private DirectoryChooserButton directoryChooserButton;
     private JTable logTable;
     private JComboBox actionComboBox;
     private JTextField startDateTextField;
@@ -288,17 +288,17 @@ public final class CMainFrame extends JFrame{
             }
         }
     }
-    private class DirectoryChangeListener implements PropertyChangeListener{
-        @Override
-        public void propertyChange(PropertyChangeEvent evt) {
-            Object source = evt.getSource();
-            if(source == directoryChooserButton){
-                setCurrentDirectory(directoryChooserButton.getCurrentDirectory());
-            } else if(source == getInstance()){
-                updateCurrentDirectoryOnUI();
-            }
-        }
-    }
+//    private class DirectoryChangeListener implements PropertyChangeListener{
+//        @Override
+//        public void propertyChange(PropertyChangeEvent evt) {
+//            Object source = evt.getSource();
+//            if(source == directoryChooserButton){
+//                setCurrentDirectory(directoryChooserButton.getCurrentDirectory());
+//            } else if(source == getInstance()){
+//                updateCurrentDirectoryOnUI();
+//            }
+//        }
+//    }
     private class ipTextFieldChangeListener implements DocumentListener{
 
         @Override
@@ -561,7 +561,7 @@ public final class CMainFrame extends JFrame{
     }
     
     private void createAndShowGUI(){
-        this.propertyChangeSupport.addPropertyChangeListener("currentDirectory", new DirectoryChangeListener());
+//        this.propertyChangeSupport.addPropertyChangeListener("currentDirectory", new DirectoryChangeListener());
         this.propertyChangeSupport.addPropertyChangeListener("isConnected", new ConnectionStatusChangeListener());
         //connect panel
         ipTextField = new JTextField(25);
@@ -600,9 +600,9 @@ public final class CMainFrame extends JFrame{
         directoryPathTextField = new JTextField();
         directoryPathTextField.setEditable(false);
         updateCurrentDirectoryOnUI();
-        directoryChooserButton = new DirectoryChooserButton("Choose...", currentDirectory);
-        directoryChooserButton.getPropertyChangeSupport()
-                .addPropertyChangeListener("currentDirectory", new DirectoryChangeListener());
+//        directoryChooserButton = new DirectoryChooserButton("Choose...", currentDirectory);
+//        directoryChooserButton.getPropertyChangeSupport()
+//                .addPropertyChangeListener("currentDirectory", new DirectoryChangeListener());
         
         watchDirectoryPanel = new JPanel();
         watchDirectoryPanel.setBorder(BorderFactory.createTitledBorder("Watched Directory"));
@@ -620,11 +620,11 @@ public final class CMainFrame extends JFrame{
         c.weightx = 1.0; //take all extra space
         c.fill = GridBagConstraints.BOTH; //fill all the space
         watchDirectoryPanel.add(directoryPathTextField, c);
-        c = new GridBagConstraints();
-        c.insets = new Insets(3,3,3,3);
-        c.gridy = 0;
-        c.gridx = 2;
-        watchDirectoryPanel.add(directoryChooserButton, c);
+//        c = new GridBagConstraints();
+//        c.insets = new Insets(3,3,3,3);
+//        c.gridy = 0;
+//        c.gridx = 2;
+//        watchDirectoryPanel.add(directoryChooserButton, c);
         
         //connect + watchDirectory panel
         JPanel connectAndWatchDirectoryWrapper = new JPanel();

@@ -46,6 +46,8 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.Vector;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -139,7 +141,7 @@ public class SMainFrame extends JFrame{
             }
             if(evt.getSource() == getInstance()){
                 if(SMainFrame.IS_ALL_CLIENTS.equals(evt.getPropertyName())){
-                    updateClientJList();
+                    updateClientJList(null);
                 }
             }
         }
@@ -156,7 +158,7 @@ public class SMainFrame extends JFrame{
             }
             if(evt.getSource() == getInstance()){
                 if(SMainFrame.CONNECTED_CLIENTS.equals(evt.getPropertyName())){
-                    updateClientJList();
+                    updateClientJList(null);
                 }
             }
         }
@@ -174,7 +176,7 @@ public class SMainFrame extends JFrame{
             }
             if (evt.getSource() == clientUtils) {
                 if (ClientUtils.CLIENT_LIST.equals(evt.getPropertyName())) {
-                    updateClientJList();
+                    updateClientJList(null);
                 }
             }
         }
@@ -199,7 +201,7 @@ public class SMainFrame extends JFrame{
         
         public void action() {
             if ("".equals(searchClientTextField.getText())){
-//                    createNewWordList(originWordList);
+                    updateClientJList(null);
             }
         }
         
@@ -493,15 +495,15 @@ public class SMainFrame extends JFrame{
         
         //set search text field
         searchClientTextField = new JTextField();
-//        searchClientTextField.addActionListener((ActionEvent e) -> 
-//                searchAndDisplayResult(searchClientTextField.getText())
-//        );
+        searchClientTextField.addActionListener((ActionEvent e) -> 
+                searchAndDisplayResult(searchClientTextField.getText())
+        );
         searchClientTextField.getDocument().addDocumentListener(new SearchClientDocumentListener());
         
         //set search button
         searchClientButton = new JButton("Search");
-//        searchClientButton.addActionListener((ActionEvent e) -> 
-//                searchAndDisplayResult(searchClientTextField.getText()));
+        searchClientButton.addActionListener((ActionEvent e) -> 
+                searchAndDisplayResult(searchClientTextField.getText()));
 
         //set search pane
         JPanel searchClientPane = new JPanel();
@@ -768,12 +770,40 @@ public class SMainFrame extends JFrame{
         }
     }
     
-    private void updateClientJList(){
+    private void searchAndDisplayResult(String searchString){
+        if(!"".equals(searchString)){
+            clientJList.clearSelection();
+            
+            if(isAllClients){
+                Client searchResult = clientUtils.getClientByIp(searchString);
+                if(searchResult != null){
+                    updateClientJList(searchResult);
+                    return;
+                }
+            } else {
+                for(Client client: connectedClients){
+                    if(client.getIp().equals(searchString)){
+                        updateClientJList(client);
+                        return;
+                    }
+                }
+            }
+            JOptionPane.showMessageDialog(null, 
+                "Cannot find this client." , "Error", 
+                JOptionPane.ERROR_MESSAGE);
+        }
+    }
+    
+    private void updateClientJList(Client client){
         DefaultListModel newModel = new DefaultListModel();
-        if(!isAllClients){
-            newModel.addAll(connectedClients);
+        if(client == null){
+            if(!isAllClients){
+                newModel.addAll(connectedClients);
+            } else {
+                newModel.addAll(clientUtils.getAllClients());
+            }
         } else {
-            newModel.addAll(clientUtils.getAllClients());
+            newModel.add(0, client);
         }
         clientJList.setModel(newModel);
     }

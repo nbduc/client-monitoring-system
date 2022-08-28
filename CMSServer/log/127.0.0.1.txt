@@ -3,3 +3,21 @@
 1661480180,LOG_IN,Log in successfully.
 1661480204,LOG_OUT,Log out successfully.
 1661593963,LOG_IN,Log in successfully.
+1661621645,LOG_IN,Log in successfully.
+1661621675,DELETE,DELETE: C:\ClientMonitoringSystem\Data\d\New Text Document.txt
+1661621675,UPDATE,UPDATE: C:\ClientMonitoringSystem\Data\d
+1661621697,CREATE,CREATE: C:\ClientMonitoringSystem\Data\d\New Text Document.txt
+1661621697,UPDATE,UPDATE: C:\ClientMonitoringSystem\Data\d
+1661621704,UPDATE,UPDATE: C:\ClientMonitoringSystem\Data\d
+1661621704,RENAME,RENAME: C:\ClientMonitoringSystem\Data\d\New Text Document.txt -> C:\ClientMonitoringSystem\Data\d\test6.txt
+1661621735,UPDATE,UPDATE: C:\ClientMonitoringSystem\Data\d\test6.txt
+1661621768,UPDATE,UPDATE: C:\ClientMonitoringSystem\Data\d
+1661621768,RENAME,RENAME: C:\ClientMonitoringSystem\Data\d\test6.txt -> C:\ClientMonitoringSystem\Data\d\78.txt
+1661622579,LOG_IN,Log in successfully.
+1661622590,DELETE,DELETE: C:\ClientMonitoringSystem\Data\d\78.txt
+1661622590,UPDATE,UPDATE: C:\ClientMonitoringSystem\Data\d
+1661622774,LOG_IN,Log in successfully.
+1661622782,RENAME,RENAME: C:\ClientMonitoringSystem\Data\d\test9.txt -> C:\ClientMonitoringSystem\Data\d\test10.txt
+1661622782,UPDATE,UPDATE: C:\ClientMonitoringSystem\Data\d
+1661622820,RENAME,RENAME: C:\ClientMonitoringSystem\Data\d\test10.txt -> C:\ClientMonitoringSystem\Data\d\test11.txt
+1661622820,UPDATE,UPDATE: C:\ClientMonitoringSystem\Data\d
